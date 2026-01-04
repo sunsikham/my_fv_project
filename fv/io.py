@@ -16,7 +16,7 @@ def resolve_out_dir(out_dir: str) -> str:
     path = Path(out_dir)
     if path.is_absolute():
         return str(path)
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[1]
     return str(repo_root / path)
 
 
