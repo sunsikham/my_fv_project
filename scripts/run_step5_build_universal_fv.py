@@ -8,9 +8,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.fv import build_fv, parse_heads
 from fv.hooks import get_c_proj_pre_hook, reshape_resid_to_heads
