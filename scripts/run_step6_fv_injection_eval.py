@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fv.intervene import make_residual_injection_hook
+from fv.intervene import make_out_proj_pre_injection_hook, make_residual_injection_hook
 from fv.io import (
     infer_step5_metadata_path,
     load_json,
@@ -21,6 +21,7 @@ from fv.io import (
     resolve_out_dir,
     save_step6_results,
 )
+from fv.hooks import get_out_proj_pre_hook_target
 from fv.model_config import get_model_config
 from fv.prompting import build_zero_shot_prompt
 
@@ -141,6 +142,18 @@ def main() -> int:
         run_info = prepare_run_dirs(args.run_id)
         out_dir = os.path.join(run_info["artifacts_dir"], "step6")
     os.makedirs(out_dir, exist_ok=True)
+    if run_info:
+        log_path = os.path.join(run_info["logs_dir"], "step6_outproj_pre.log")
+    else:
+        log_path = os.path.join(out_dir, "step6_outproj_pre.log")
+    log_file = open(log_path, "w", encoding="utf-8")
+
+    def log(message: str) -> None:
+        print(message)
+        log_file.write(message + "\n")
+        log_file.flush()
+
+    log("step6 out_proj_pre start")
 
     try:
         import torch
@@ -269,14 +282,15 @@ def main() -> int:
     else:
         print("step5 metadata not found")
 
-    if not hasattr(model, "transformer") or not hasattr(model.transformer, "h"):
-        print("Model does not expose transformer.h blocks.")
+    try:
+        out_proj_module, out_proj_path = get_out_proj_pre_hook_target(model, args.layer)
+    except ValueError as exc:
+        print(str(exc))
         return 1
-    if args.layer < 0 or args.layer >= len(model.transformer.h):
-        print("Layer index out of range.")
-        return 1
-
-    block = model.transformer.h[args.layer]
+    print(f"hook_target(out_proj_pre): {out_proj_path}")
+    log(f"hook_target(out_proj_pre): {out_proj_path}")
+    print("injection_point: out_proj_pre")
+    log("injection_point: out_proj_pre")
 
     injection_state = {
         "fv": fv,
@@ -284,7 +298,7 @@ def main() -> int:
         "batch_indices": None,
         "last_indices": None,
     }
-    inject_hook = make_residual_injection_hook(injection_state)
+    inject_hook = make_out_proj_pre_injection_hook(injection_state)
 
     if args.batch_size < 1:
         print("batch_size must be >= 1")
@@ -368,10 +382,17 @@ def main() -> int:
 
         injection_state["last_indices"] = last_indices
         injection_state["batch_indices"] = batch_indices
-        handle = block.register_forward_hook(inject_hook)
+        injection_state["calls"] = 0
+        handle = out_proj_module.register_forward_pre_hook(inject_hook)
         with torch.inference_mode():
             outputs_fv = model(**inputs)
         handle.remove()
+        if injection_state.get("calls", 0) < 1:
+            print("pre-hook called: 0")
+            log("pre-hook called: 0")
+        else:
+            print(f"pre-hook called: {injection_state['calls']}")
+            log(f"pre-hook called: {injection_state['calls']}")
 
         logits_fv = outputs_fv.logits
         last_logits_fv = logits_fv[batch_indices, last_indices]
@@ -499,7 +520,10 @@ def main() -> int:
     )
 
     print(f"saved results: {saved_paths['results_path']}")
+    log(f"saved results: {saved_paths['results_path']}")
     print(f"metadata saved: {saved_paths['metadata_path']}")
+    log(f"metadata saved: {saved_paths['metadata_path']}")
+    log_file.close()
 
     return 0
 
