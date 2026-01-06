@@ -13,10 +13,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from fv.adapters import resolve_attn, resolve_blocks, resolve_out_proj
 from fv.corrupt import make_corrupted_demos
 from fv.intervene import make_residual_injection_hook
 from fv.io import prepare_run_dirs, resolve_out_dir, save_json
 from fv.model_config import get_model_config
+from fv.model_spec import get_model_spec
 from fv.prompting import ANTONYM_PAIRS
 from fv.slots import compute_query_predictive_slot
 
@@ -71,6 +73,53 @@ def std(values):
     if len(values) < 2:
         return 0.0
     return statistics.pstdev(values)
+
+
+def build_fv_global_resid(
+    model,
+    spec,
+    top_heads,
+    clean_mean,
+    head_dim: int,
+    hidden_size: int,
+    device,
+    log,
+):
+    import torch
+
+    fv_global = torch.zeros((hidden_size,), dtype=torch.float32, device=device)
+    blocks = resolve_blocks(model, spec, logger=log)
+    out_proj_by_layer = {}
+
+    for entry in top_heads:
+        layer = entry["layer"]
+        head = entry["head"]
+        if layer not in out_proj_by_layer:
+            attn = resolve_attn(blocks[layer], spec, logger=log)
+            out_proj_by_layer[layer] = resolve_out_proj(attn, spec, logger=log)
+        out_proj = out_proj_by_layer[layer]
+
+        try:
+            param = next(out_proj.parameters())
+            out_dtype = param.dtype
+            out_device = param.device
+        except StopIteration:
+            out_dtype = torch.float32
+            out_device = device
+
+        x_pre = torch.zeros((1, 1, hidden_size), dtype=out_dtype, device=out_device)
+        head_vec = clean_mean[layer][head].to(device=out_device, dtype=out_dtype)
+        start = head * head_dim
+        end = start + head_dim
+        x_pre[0, 0, start:end] = head_vec
+
+        with torch.inference_mode():
+            out = out_proj(x_pre)
+        if isinstance(out, tuple):
+            out = out[0]
+        fv_global += out.reshape(-1).to(dtype=torch.float32, device=device)
+
+    return fv_global
 
 
 def main() -> int:
@@ -140,6 +189,12 @@ def main() -> int:
     model_cfg = get_model_config(args.model)
     if model_cfg is None:
         log(f"No model config found for '{args.model}'")
+        log_file.close()
+        return 1
+    try:
+        spec = get_model_spec("gpt2")
+    except ValueError as exc:
+        log(str(exc))
         log_file.close()
         return 1
 
@@ -272,6 +327,50 @@ def main() -> int:
             log("Layer index out of range")
             log_file.close()
             return 1
+
+    fv_global_resid = build_fv_global_resid(
+        model=model,
+        spec=spec,
+        top_heads=top_heads,
+        clean_mean=clean_mean,
+        head_dim=head_dim,
+        hidden_size=resid_dim,
+        device=device,
+        log=log,
+    )
+    if fv_global_resid.shape[-1] != resid_dim:
+        log(
+            "fv_global_resid size mismatch: "
+            f"got={fv_global_resid.shape[-1]} expected={resid_dim}"
+        )
+        log_file.close()
+        return 1
+    log("built fv_global_resid via out_proj forward")
+
+    fv_global_path = os.path.join(artifacts_dir, "fv_global_resid.pt")
+    torch.save(
+        {
+            "fv_global_resid": fv_global_resid.detach().cpu(),
+            "resid_dim": resid_dim,
+            "head_dim": head_dim,
+            "n_heads": n_heads,
+        },
+        fv_global_path,
+    )
+    log(f"saved fv_global_resid: {fv_global_path}")
+
+    fv_global_meta_path = os.path.join(artifacts_dir, "fv_global_resid_meta.json")
+    save_json(
+        fv_global_meta_path,
+        {
+            "spec_name": spec.name,
+            "model": args.model,
+            "run_id_stepD": args.run_id_stepD,
+            "heads": top_heads,
+            "token_position_rule": "t_idx = seq_len - 1 (last token of prefix)",
+        },
+    )
+    log(f"saved fv_global_resid metadata: {fv_global_meta_path}")
 
     if args.n_eval_trials + 1 > len(ANTONYM_PAIRS):
         log("Not enough antonym pairs for requested demos + query.")

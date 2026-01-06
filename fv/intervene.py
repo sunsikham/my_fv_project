@@ -19,6 +19,7 @@ def make_residual_injection_hook(state):
         injected[state["batch_indices"], state["last_indices"], :] += state[
             "alpha"
         ] * state["fv"].to(hidden.dtype)
+        state["calls"] = state.get("calls", 0) + 1
         if rest is None:
             return injected
         return (injected,) + rest
