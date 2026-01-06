@@ -28,15 +28,24 @@ def make_residual_injection_hook(state):
 
 def make_out_proj_pre_injection_hook(state):
     def inject_pre_hook(_module, inputs):
+        import torch
+
         hidden = inputs[0] if inputs else None
         rest = inputs[1:] if inputs else None
 
         if state["fv"] is None:
             raise RuntimeError("FV not set in injection state")
-        if hidden is None or not hasattr(hidden, "shape") or hidden.dim() != 3:
-            return None
+        if hidden is None or not torch.is_tensor(hidden):
+            raise RuntimeError("out_proj pre-hook expected Tensor input")
+        if hidden.dim() < 2:
+            raise RuntimeError(
+                f"out_proj pre-hook expected ndim>=2, got {hidden.dim()}"
+            )
         if hidden.shape[-1] != state["fv"].shape[0]:
-            raise RuntimeError("Hidden size mismatch during injection")
+            raise RuntimeError(
+                "Hidden size mismatch during injection: "
+                f"got {hidden.shape[-1]} expected {state['fv'].shape[0]}"
+            )
         if state["batch_indices"] is None or state["last_indices"] is None:
             raise RuntimeError("Injection indices not set")
 
