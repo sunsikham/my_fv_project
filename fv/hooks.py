@@ -2,7 +2,8 @@
 
 from typing import Tuple
 
-from .adapters import get_attention_module, get_attn_out_proj, get_blocks
+from .adapters import resolve_attn, resolve_blocks, resolve_out_proj
+from .model_spec import get_model_spec
 
 
 def get_c_proj_pre_hook(model, layer: int) -> Tuple[object, str]:
@@ -16,15 +17,22 @@ def get_c_proj_pre_hook(model, layer: int) -> Tuple[object, str]:
     return block.attn.c_proj, f"transformer.h.{layer}.attn.c_proj"
 
 
-def get_out_proj_pre_hook_target(model, layer: int) -> Tuple[object, str]:
+def get_out_proj_pre_hook_target(
+    model, layer_idx: int, spec_name: str = "gpt2", logger=None
+) -> Tuple[object, str]:
     """Find attention output projection module for pre-hook attachment."""
-    blocks, blocks_path = get_blocks(model)
-    if layer < 0 or layer >= len(blocks):
+    spec = get_model_spec(spec_name)
+    blocks = resolve_blocks(model, spec, logger=logger)
+    if layer_idx < 0 or layer_idx >= len(blocks):
         raise ValueError("Layer index out of range")
-    block = blocks[layer]
-    attn_module, attn_name = get_attention_module(block)
-    out_proj, out_name = get_attn_out_proj(attn_module)
-    return out_proj, f"{blocks_path}.{layer}.{attn_name}.{out_name}"
+    block = blocks[layer_idx]
+    attn_module = resolve_attn(block, spec, logger=logger)
+    out_proj = resolve_out_proj(attn_module, spec, logger=logger)
+    path = (
+        f"{spec.blocks_path}.{layer_idx}."
+        f"{spec.attn_path_in_block}.{spec.out_proj_path_in_attn}"
+    )
+    return out_proj, path
 
 
 def reshape_resid_to_heads(tensor, n_heads: int, head_dim: int, resid_dim: int):

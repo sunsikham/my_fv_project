@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from fv.model_spec import get_model_spec
 from fv.intervene import make_out_proj_pre_injection_hook, make_residual_injection_hook
 from fv.io import (
     infer_step5_metadata_path,
@@ -86,6 +87,143 @@ def resolve_dtype(dtype_str: str, torch_module):
     if dtype_str not in mapping:
         raise ValueError(f"Unknown dtype option: {dtype_str}")
     return mapping[dtype_str]
+
+
+def validate_out_proj_module(
+    model,
+    tokenizer,
+    out_proj_module,
+    out_proj_path: str,
+    hidden_size: int,
+    dtype,
+    device,
+    layer: int,
+    spec_name: str,
+    logger=None,
+) -> None:
+    import torch
+
+    if out_proj_module is None:
+        raise ValueError(
+            f"out_proj resolved to None: spec={spec_name} path={out_proj_path}"
+        )
+    if not (callable(out_proj_module) or hasattr(out_proj_module, "forward")):
+        raise ValueError(
+            "out_proj is not callable and has no forward: "
+            f"spec={spec_name} path={out_proj_path}"
+        )
+    if not hasattr(out_proj_module, "register_forward_pre_hook"):
+        raise ValueError(
+            "out_proj does not support forward pre-hook registration: "
+            f"spec={spec_name} path={out_proj_path}"
+        )
+
+    state = {"inputs": None, "output": None, "pre_calls": 0, "fwd_calls": 0}
+
+    def pre_hook(_module, inputs):
+        state["pre_calls"] += 1
+        if not inputs:
+            raise RuntimeError(
+                f"out_proj pre-hook received empty inputs: path={out_proj_path}"
+            )
+        x = inputs[0]
+        if not torch.is_tensor(x):
+            raise RuntimeError(
+                "out_proj pre-hook expected Tensor input: "
+                f"path={out_proj_path}"
+            )
+        if x.dim() < 2:
+            raise RuntimeError(
+                "out_proj pre-hook expected ndim>=2: "
+                f"got {x.dim()} path={out_proj_path}"
+            )
+        if x.shape[-1] != hidden_size:
+            raise RuntimeError(
+                "out_proj pre-hook hidden_size mismatch: "
+                f"got {x.shape[-1]} expected {hidden_size} path={out_proj_path}"
+            )
+        state["inputs"] = inputs
+        state["x_dim"] = x.dim()
+        state["x_dtype"] = x.dtype
+        state["x_device"] = x.device
+
+    def fwd_hook(_module, _inputs, output):
+        state["fwd_calls"] += 1
+        y = output[0] if isinstance(output, tuple) else output
+        if not torch.is_tensor(y):
+            raise RuntimeError(
+                "out_proj forward output is not a Tensor: "
+                f"path={out_proj_path}"
+            )
+        if y.shape[-1] != hidden_size:
+            raise RuntimeError(
+                "out_proj output hidden_size mismatch: "
+                f"got {y.shape[-1]} expected {hidden_size} path={out_proj_path}"
+            )
+        state["output"] = y
+        state["y_dtype"] = y.dtype
+        state["y_device"] = y.device
+
+    handle_pre = out_proj_module.register_forward_pre_hook(pre_hook)
+    handle_fwd = out_proj_module.register_forward_hook(fwd_hook)
+    try:
+        inputs = tokenizer(["Antonyms:\nsharp ->"], return_tensors="pt", padding=True)
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+        with torch.inference_mode():
+            _ = model(**inputs)
+    finally:
+        handle_pre.remove()
+        handle_fwd.remove()
+
+    if state.get("pre_calls", 0) < 1:
+        raise RuntimeError(f"out_proj pre-hook not called: path={out_proj_path}")
+    if state.get("fwd_calls", 0) < 1:
+        raise RuntimeError(f"out_proj forward-hook not called: path={out_proj_path}")
+    if state.get("inputs") is None or state.get("output") is None:
+        raise RuntimeError(
+            f"out_proj hooks did not capture tensors: path={out_proj_path}"
+        )
+
+    x_pre = state["inputs"][0]
+    y_real = state["output"]
+    if y_real.dim() != state.get("x_dim"):
+        raise RuntimeError(
+            "out_proj output rank mismatch: "
+            f"input_dim={state.get('x_dim')} output_dim={y_real.dim()} "
+            f"path={out_proj_path}"
+        )
+
+    with torch.inference_mode():
+        y_calc = out_proj_module(*state["inputs"])
+    if isinstance(y_calc, tuple):
+        y_calc = y_calc[0]
+    if not torch.is_tensor(y_calc):
+        raise RuntimeError(
+            f"out_proj recompute output is not a Tensor: path={out_proj_path}"
+        )
+    if y_calc.shape != y_real.shape:
+        raise RuntimeError(
+            "out_proj output shape mismatch: "
+            f"calc={tuple(y_calc.shape)} real={tuple(y_real.shape)} "
+            f"path={out_proj_path}"
+        )
+
+    tol = 1e-4 if y_real.dtype == torch.float32 else 1e-2
+    max_abs_diff = (y_calc - y_real).abs().max().item()
+    if max_abs_diff > tol:
+        raise RuntimeError(
+            "out_proj validation failed: "
+            f"model={spec_name} layer={layer} path={out_proj_path} "
+            f"x_pre dtype={state.get('x_dtype')} device={state.get('x_device')} "
+            f"y_real dtype={state.get('y_dtype')} device={state.get('y_device')} "
+            f"max_abs_diff={max_abs_diff:.6g} tol={tol}"
+        )
+
+    if logger:
+        logger(
+            "out_proj validation ok: "
+            f"path={out_proj_path} max_abs_diff={max_abs_diff:.6g}"
+        )
 
 
 def main() -> int:
@@ -235,6 +373,12 @@ def main() -> int:
         model.config.pad_token_id = tokenizer.eos_token_id
 
     try:
+        spec = get_model_spec("gpt2")
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    try:
         fv = torch.load(args.fv_path, map_location="cpu")
     except Exception as exc:  # pragma: no cover - runtime load check
         print(f"Failed to load FV from '{args.fv_path}': {exc}")
@@ -255,6 +399,22 @@ def main() -> int:
         num_heads = getattr(model.config, "num_attention_heads", None)
     if num_heads is None:
         print("Missing num_heads in model config.")
+        return 1
+
+    head_dim = model_cfg.get("head_dim") if model_cfg else None
+    if head_dim is None:
+        if hidden_size % num_heads != 0:
+            print(
+                "hidden_size must be divisible by num_heads: "
+                f"hidden_size={hidden_size} n_heads={num_heads}"
+            )
+            return 1
+        head_dim = hidden_size // num_heads
+    if hidden_size != num_heads * head_dim:
+        print(
+            "Hidden size does not match n_heads * head_dim: "
+            f"hidden_size={hidden_size} n_heads={num_heads} head_dim={head_dim}"
+        )
         return 1
 
     if hidden_size != model_cfg["resid_dim"] or num_heads != model_cfg["n_heads"]:
@@ -283,7 +443,9 @@ def main() -> int:
         print("step5 metadata not found")
 
     try:
-        out_proj_module, out_proj_path = get_out_proj_pre_hook_target(model, args.layer)
+        out_proj_module, out_proj_path = get_out_proj_pre_hook_target(
+            model, args.layer, spec_name=spec.name, logger=log
+        )
     except ValueError as exc:
         print(str(exc))
         return 1
@@ -291,6 +453,23 @@ def main() -> int:
     log(f"hook_target(out_proj_pre): {out_proj_path}")
     print("injection_point: out_proj_pre")
     log("injection_point: out_proj_pre")
+
+    try:
+        validate_out_proj_module(
+            model=model,
+            tokenizer=tokenizer,
+            out_proj_module=out_proj_module,
+            out_proj_path=out_proj_path,
+            hidden_size=hidden_size,
+            dtype=dtype,
+            device=device,
+            layer=args.layer,
+            spec_name=spec.name,
+            logger=log,
+        )
+    except RuntimeError as exc:
+        print(str(exc))
+        return 1
 
     injection_state = {
         "fv": fv,
