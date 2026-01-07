@@ -13,11 +13,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fv.adapters import resolve_attn, resolve_blocks, resolve_out_proj
+from fv.adapters import infer_head_dims, resolve_attn, resolve_blocks, resolve_out_proj
 from fv.corrupt import make_corrupted_demos
 from fv.intervene import make_residual_injection_hook
 from fv.io import prepare_run_dirs, resolve_out_dir, save_json
-from fv.model_config import get_model_config
 from fv.model_spec import get_model_spec
 from fv.prompting import ANTONYM_PAIRS
 from fv.slots import compute_query_predictive_slot
@@ -127,6 +126,11 @@ def main() -> int:
     parser.add_argument("--run_id_stepD", required=True, help="StepD run_id")
     parser.add_argument("--k", type=int, default=20, help="Top-k heads (default: 20)")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
+    parser.add_argument(
+        "--model_spec",
+        default="gpt2",
+        help="Model spec name for adapter resolution (default: gpt2)",
+    )
     parser.add_argument("--layers", default="all", help="Layer filter (default: all)")
     parser.add_argument("--alpha", type=float, default=1.0, help="Injection scale (default: 1.0)")
     parser.add_argument(
@@ -171,6 +175,7 @@ def main() -> int:
     log(f"log_path: {log_path}")
     log(f"run_id_stepD: {args.run_id_stepD}")
     log(f"model: {args.model}")
+    log(f"model_spec: {args.model_spec}")
     log(f"k: {args.k}")
     log(f"layers: {args.layers}")
     log(f"alpha: {args.alpha}")
@@ -186,13 +191,8 @@ def main() -> int:
         log_file.close()
         return 1
 
-    model_cfg = get_model_config(args.model)
-    if model_cfg is None:
-        log(f"No model config found for '{args.model}'")
-        log_file.close()
-        return 1
     try:
-        spec = get_model_spec("gpt2")
+        spec = get_model_spec(args.model_spec)
     except ValueError as exc:
         log(str(exc))
         log_file.close()
@@ -256,7 +256,12 @@ def main() -> int:
     save_json(
         top_heads_path,
         {
-            "meta": {"source_run_id": args.run_id_stepD, "k": args.k, "model": args.model},
+            "meta": {
+                "source_run_id": args.run_id_stepD,
+                "k": args.k,
+                "model": args.model,
+                "model_spec": args.model_spec,
+            },
             "heads": top_heads,
         },
     )
@@ -264,9 +269,45 @@ def main() -> int:
 
     clean_mean_blob = torch.load(clean_mean_path, map_location="cpu")
     clean_mean = clean_mean_blob["clean_mean"]
-    n_heads = int(clean_mean_blob["n_heads"])
-    head_dim = int(clean_mean_blob["head_dim"])
-    resid_dim = int(clean_mean_blob["resid_dim"])
+    n_heads_blob = int(clean_mean_blob["n_heads"])
+    head_dim_blob = int(clean_mean_blob["head_dim"])
+    resid_dim_blob = int(clean_mean_blob["resid_dim"])
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
+        model = AutoModelForCausalLM.from_pretrained(args.model)
+    except Exception as exc:  # pragma: no cover - runtime load check
+        log(f"Failed to load model '{args.model}': {exc}")
+        log_file.close()
+        return 1
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = tokenizer.eos_token_id
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+
+    try:
+        dims = infer_head_dims(model, spec_name=args.model_spec)
+    except ValueError as exc:
+        log(str(exc))
+        log_file.close()
+        return 1
+
+    n_heads = int(dims["n_heads"])
+    head_dim = int(dims["head_dim"])
+    resid_dim = int(dims["hidden_size"])
+
+    if (n_heads, head_dim, resid_dim) != (n_heads_blob, head_dim_blob, resid_dim_blob):
+        log(
+            "clean_mean dims do not match model config: "
+            f"clean_mean=({n_heads_blob},{head_dim_blob},{resid_dim_blob}) "
+            f"model=({n_heads},{head_dim},{resid_dim})"
+        )
+        log_file.close()
+        return 1
 
     fv_by_layer = {layer: torch.zeros((resid_dim,), dtype=torch.float32) for layer in layer_filter}
     for entry in top_heads:
@@ -289,6 +330,7 @@ def main() -> int:
             "resid_dim": resid_dim,
             "selected_k": args.k,
             "alpha_default": args.alpha,
+            "model_spec": args.model_spec,
             "fv_by_layer": {layer: fv_by_layer[layer] for layer in fv_by_layer},
         },
         fv_by_layer_path,
@@ -301,29 +343,14 @@ def main() -> int:
         torch.cuda.manual_seed_all(args.seed)
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(args.model)
-        model = AutoModelForCausalLM.from_pretrained(args.model)
-    except Exception as exc:  # pragma: no cover - runtime load check
-        log(f"Failed to load model '{args.model}': {exc}")
+        blocks = resolve_blocks(model, spec, logger=log)
+    except ValueError as exc:
+        log(str(exc))
         log_file.close()
         return 1
 
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        model.config.pad_token_id = tokenizer.eos_token_id
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model.eval()
-
-    if not hasattr(model, "transformer") or not hasattr(model.transformer, "h"):
-        log("Model does not expose transformer.h blocks.")
-        log_file.close()
-        return 1
-
-    n_layers = len(model.transformer.h)
     for layer in fv_by_layer:
-        if layer < 0 or layer >= n_layers:
+        if layer < 0 or layer >= len(blocks):
             log("Layer index out of range")
             log_file.close()
             return 1
@@ -442,7 +469,7 @@ def main() -> int:
             injection_state["last_indices"] = last_indices
 
             inject_hook = make_residual_injection_hook(injection_state)
-            block = model.transformer.h[layer]
+            block = blocks[layer]
             handle = block.register_forward_hook(inject_hook)
             with torch.inference_mode():
                 outputs_fv = model(**inputs)
@@ -475,6 +502,7 @@ def main() -> int:
         {
             "meta": {
                 "model": args.model,
+                "model_spec": args.model_spec,
                 "run_id_stepD": args.run_id_stepD,
                 "k": args.k,
                 "layers": sorted(layer_filter),

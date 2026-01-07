@@ -36,7 +36,37 @@ MODEL_SPECS: Dict[str, ModelSpec] = {
         dtype="fp32",
         device_map=None,
         quantization=None,
-    )
+    ),
+    "llama3": ModelSpec(
+        name="llama3",
+        hf_model_id="llama3",
+        prepend_bos=True,
+        blocks_path="model.layers",
+        attn_path_in_block="self_attn",
+        out_proj_path_in_attn="o_proj",
+        n_layers=None,
+        n_heads=None,
+        head_dim=None,
+        hidden_size=None,
+        dtype=None,
+        device_map=None,
+        quantization=None,
+    ),
+    "llama3_wrapped": ModelSpec(
+        name="llama3_wrapped",
+        hf_model_id="llama3_wrapped",
+        prepend_bos=True,
+        blocks_path="model.model.layers",
+        attn_path_in_block="self_attn",
+        out_proj_path_in_attn="o_proj",
+        n_layers=None,
+        n_heads=None,
+        head_dim=None,
+        hidden_size=None,
+        dtype=None,
+        device_map=None,
+        quantization=None,
+    ),
 }
 
 

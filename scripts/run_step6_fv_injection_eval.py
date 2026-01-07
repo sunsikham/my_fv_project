@@ -16,9 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from fv.model_spec import get_model_spec
 from fv.intervene import make_residual_injection_hook
 from fv.io import load_json, prepare_run_dirs, resolve_out_dir, save_step6_results
-from fv.adapters import resolve_blocks
-from fv.model_config import get_model_config
-from fv.model_spec import get_model_spec
+from fv.adapters import infer_head_dims, resolve_blocks
 from fv.prompting import build_zero_shot_prompt
 
 
@@ -88,6 +86,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="STEP 6 FV injection eval.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
     parser.add_argument(
+        "--model_spec",
+        default="gpt2",
+        help="Model spec name for adapter resolution (default: gpt2)",
+    )
+    parser.add_argument(
         "--edit_layer",
         type=int,
         default=0,
@@ -150,6 +153,11 @@ def main() -> int:
         help="Model dtype (default: fp32)",
     )
     parser.add_argument(
+        "--device_map",
+        default=None,
+        help="Optional HF device_map for large models (default: None)",
+    )
+    parser.add_argument(
         "--batch_size",
         type=int,
         default=1,
@@ -200,9 +208,10 @@ def main() -> int:
         print(f"Failed to import required libraries: {exc}")
         return 1
 
-    model_cfg = get_model_config(args.model)
-    if model_cfg is None:
-        print(f"No model config found for '{args.model}'")
+    try:
+        spec = get_model_spec(args.model_spec)
+    except ValueError as exc:
+        print(str(exc))
         return 1
 
     random.seed(args.seed)
@@ -236,46 +245,67 @@ def main() -> int:
     print(f"transformers: {transformers.__version__}")
     print(f"seed: {args.seed}")
     print(f"model: {args.model}")
+    print(f"model_spec: {args.model_spec}")
     print(f"edit_layer: {args.edit_layer}")
     print(f"use_fv_by_layer: {args.use_fv_by_layer}")
     if args.run_id_stepE:
         print(f"run_id_stepE: {args.run_id_stepE}")
     print(f"alpha: {args.alpha}")
     print(f"dtype: {args.dtype}")
+    if args.device_map:
+        print(f"device_map: {args.device_map}")
     print(f"batch_size: {args.batch_size}")
     if run_info:
         print(f"run_id: {run_info['run_id']}")
     print(f"out_dir: {out_dir}")
-    reshape_rule = model_cfg["reshape"]
-    print(
-        "config: "
-        f"n_heads={model_cfg['n_heads']} "
-        f"head_dim={model_cfg['head_dim']} "
-        f"resid_dim={model_cfg['resid_dim']} "
-        f"reshape={reshape_rule}"
-    )
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(args.model)
-        if args.dtype == "fp32":
-            model = AutoModelForCausalLM.from_pretrained(args.model)
-        else:
-            model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=dtype)
+        model_kwargs = {}
+        if args.dtype != "fp32":
+            model_kwargs["torch_dtype"] = dtype
+        if args.device_map:
+            model_kwargs["device_map"] = args.device_map
+        model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
     except Exception as exc:  # pragma: no cover - runtime load check
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
-    model.to(device)
+    if args.device_map:
+        print("device_map provided; skipping model.to(device)")
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            pass
+        print(f"input device: {device}")
+    else:
+        model.to(device)
     model.eval()
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
-
     try:
-        spec = get_model_spec("gpt2")
+        dims = infer_head_dims(model, spec_name=args.model_spec)
     except ValueError as exc:
         print(str(exc))
         return 1
+
+    n_heads = int(dims["n_heads"])
+    head_dim = int(dims["head_dim"])
+    resid_dim = int(dims["hidden_size"])
+    reshape_rule = "resid_to_heads"
+    hook_target = (
+        f"{spec.blocks_path}.{{layer}}."
+        f"{spec.attn_path_in_block}.{spec.out_proj_path_in_attn}"
+    )
+    print(
+        "config: "
+        f"n_heads={n_heads} "
+        f"head_dim={head_dim} "
+        f"resid_dim={resid_dim} "
+        f"reshape={reshape_rule} "
+        f"hook_target={hook_target}"
+    )
 
     try:
         blocks = resolve_blocks(model, spec, logger=log)
@@ -354,41 +384,8 @@ def main() -> int:
         print(f"FV must be 1D, got shape {tuple(fv.shape)}")
         return 1
 
-    hidden_size = getattr(model.config, "n_embd", None)
-    if hidden_size is None:
-        hidden_size = getattr(model.config, "hidden_size", None)
-    if hidden_size is None:
-        print("Missing hidden_size in model config.")
-        return 1
-    num_heads = getattr(model.config, "n_head", None)
-    if num_heads is None:
-        num_heads = getattr(model.config, "num_attention_heads", None)
-    if num_heads is None:
-        print("Missing num_heads in model config.")
-        return 1
-
-    head_dim = model_cfg.get("head_dim") if model_cfg else None
-    if head_dim is None:
-        if hidden_size % num_heads != 0:
-            print(
-                "hidden_size must be divisible by num_heads: "
-                f"hidden_size={hidden_size} n_heads={num_heads}"
-            )
-            return 1
-        head_dim = hidden_size // num_heads
-    if hidden_size != num_heads * head_dim:
-        print(
-            "Hidden size does not match n_heads * head_dim: "
-            f"hidden_size={hidden_size} n_heads={num_heads} head_dim={head_dim}"
-        )
-        return 1
-
-    if hidden_size != model_cfg["resid_dim"] or num_heads != model_cfg["n_heads"]:
-        print("Model config does not match expected dimensions.")
-        return 1
-
-    if fv.shape[0] != hidden_size:
-        print(f"FV size {fv.shape[0]} does not match hidden_size {hidden_size}")
+    if fv.shape[0] != resid_dim:
+        print(f"FV size {fv.shape[0]} does not match hidden_size {resid_dim}")
         return 1
 
     fv = fv.to(device=device, dtype=dtype)
@@ -567,6 +564,7 @@ def main() -> int:
 
     step6_metadata = {
         "model": args.model,
+        "model_spec": args.model_spec,
         "edit_layer": args.edit_layer,
         "injection_point": "residual",
         "slot": "query_predictive",
@@ -579,11 +577,12 @@ def main() -> int:
         "alpha": args.alpha,
         "fv_source": fv_source,
         "config": {
-            "n_heads": model_cfg["n_heads"],
-            "head_dim": model_cfg["head_dim"],
-            "resid_dim": model_cfg["resid_dim"],
-            "hook_type": model_cfg["hook_type"],
-            "reshape": model_cfg["reshape"],
+            "n_heads": n_heads,
+            "head_dim": head_dim,
+            "resid_dim": resid_dim,
+            "hook_type": "pre",
+            "reshape": reshape_rule,
+            "hook_target": hook_target,
             "dtype": args.dtype,
             "device": str(device),
             "batch_size": args.batch_size,
@@ -596,6 +595,7 @@ def main() -> int:
     payload = {
         "config": {
             "model": args.model,
+            "model_spec": args.model_spec,
             "edit_layer": args.edit_layer,
             "fv_source": fv_source,
             "seed": args.seed,
