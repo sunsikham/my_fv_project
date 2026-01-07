@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.dataset_loader import load_pairs_antonym
+from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.model_spec import get_model_spec
 from fv.intervene import make_residual_injection_hook
 from fv.io import load_json, prepare_run_dirs, resolve_out_dir, save_step6_results
@@ -74,6 +75,45 @@ def resolve_dtype(dtype_str: str, torch_module):
     if dtype_str not in mapping:
         raise ValueError(f"Unknown dtype option: {dtype_str}")
     return mapping[dtype_str]
+
+
+def check_llama_target_paths(model, spec, logger):
+    def resolve_required(root, dotted_path: str, label: str):
+        current = root
+        parts = dotted_path.split(".")
+        for idx, part in enumerate(parts):
+            if not hasattr(current, part):
+                prefix = ".".join(parts[: idx + 1])
+                raise ValueError(
+                    f"Spec '{spec.name}' failed to resolve {label} '{dotted_path}': "
+                    f"missing '{part}' at '{prefix}'"
+                )
+            current = getattr(current, part)
+        return current
+
+    blocks = resolve_required(model, spec.blocks_path, label="blocks_path")
+    logger(f"llama target: blocks_path={spec.blocks_path} exists=True")
+    blocks_list = list(blocks)
+    if not blocks_list:
+        raise ValueError(
+            f"Spec '{spec.name}' failed to resolve blocks_path '{spec.blocks_path}': "
+            "no blocks found"
+        )
+    block0 = blocks_list[0]
+    attn = resolve_required(block0, spec.attn_path_in_block, label="attn_path_in_block")
+    logger(
+        f"llama target: attn_path_in_block={spec.attn_path_in_block} exists=True"
+    )
+    resolve_required(attn, spec.out_proj_path_in_attn, label="out_proj_path_in_attn")
+    logger(
+        f"llama target: out_proj_path_in_attn={spec.out_proj_path_in_attn} exists=True"
+    )
+
+    mlp = resolve_required(block0, "mlp", label="mlp")
+    logger("llama target: mlp exists=True")
+    for proj_name in ("down_proj", "up_proj", "gate_proj"):
+        resolve_required(mlp, proj_name, label=f"mlp.{proj_name}")
+        logger(f"llama target: mlp.{proj_name} exists=True")
 
 
 def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
@@ -155,20 +195,26 @@ def main() -> int:
     )
     parser.add_argument(
         "--device",
-        default="auto",
+        default=None,
         choices=["auto", "cpu", "cuda"],
-        help="Device selection (default: auto)",
+        help="Device selection (default: cuda if available else cpu)",
     )
     parser.add_argument(
         "--dtype",
-        default="fp32",
+        default=None,
         choices=["fp32", "fp16", "bf16"],
-        help="Model dtype (default: fp32)",
+        help="Model dtype (default: fp16 on cuda else fp32)",
+    )
+    parser.add_argument(
+        "--quant",
+        default="auto",
+        choices=["auto", "none", "4bit", "8bit"],
+        help="Quantization mode (default: auto)",
     )
     parser.add_argument(
         "--device_map",
         default=None,
-        help="Optional HF device_map for large models (default: None)",
+        help="Optional HF device_map (default: None or 'auto')",
     )
     parser.add_argument(
         "--batch_size",
@@ -216,7 +262,6 @@ def main() -> int:
     try:
         import torch
         import transformers
-        from transformers import AutoModelForCausalLM, AutoTokenizer
     except Exception as exc:  # pragma: no cover - runtime import check
         print(f"Failed to import required libraries: {exc}")
         return 1
@@ -232,20 +277,25 @@ def main() -> int:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
+    if args.device in (None, "auto"):
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.dtype is None:
+        args.dtype = "fp16" if args.device == "cuda" else "fp32"
+
     try:
         device = resolve_device(args.device, torch)
     except ValueError as exc:
         print(str(exc))
         return 1
 
+    if device.type == "cpu" and args.dtype in {"fp16", "bf16"}:
+        print(f"cpu does not support {args.dtype}; forcing fp32")
+        args.dtype = "fp32"
+
     try:
         dtype = resolve_dtype(args.dtype, torch)
     except ValueError as exc:
         print(str(exc))
-        return 1
-
-    if device.type == "cpu" and dtype == torch.float16:
-        print("fp16 is not supported on cpu")
         return 1
 
     if device.type == "cuda":
@@ -266,6 +316,7 @@ def main() -> int:
         print(f"run_id_stepE: {args.run_id_stepE}")
     print(f"alpha: {args.alpha}")
     print(f"dtype: {args.dtype}")
+    print(f"quant: {args.quant}")
     if args.device_map:
         print(f"device_map: {args.device_map}")
     print(f"batch_size: {args.batch_size}")
@@ -274,17 +325,26 @@ def main() -> int:
     print(f"out_dir: {out_dir}")
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(args.model)
-        model_kwargs = {}
-        if args.dtype != "fp32":
-            model_kwargs["torch_dtype"] = dtype
-        if args.device_map:
-            model_kwargs["device_map"] = args.device_map
-        model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
+        loader_device = None if args.device_map else args.device
+        model, tokenizer, diagnostics = load_hf_model_and_tokenizer(
+            model_name=args.model,
+            model_spec=args.model_spec,
+            device=loader_device,
+            dtype=args.dtype,
+            quant=args.quant,
+            device_map=args.device_map,
+        )
+        print(
+            "hf_loader diagnostics: "
+            + " ".join(
+                f"{key}={value}" for key, value in diagnostics.items()
+            )
+        )
     except Exception as exc:  # pragma: no cover - runtime load check
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    resolved_quant = diagnostics.get("resolved_quant") if diagnostics else None
     if args.device_map:
         print("device_map provided; skipping model.to(device)")
         try:
@@ -292,12 +352,21 @@ def main() -> int:
         except StopIteration:
             pass
         print(f"input device: {device}")
+    elif resolved_quant in {"4bit", "8bit"}:
+        print("quantized model; skipping model.to(device)")
     else:
         model.to(device)
     model.eval()
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
+
+    if spec.name == "llama3":
+        try:
+            check_llama_target_paths(model, spec, logger=print)
+        except ValueError as exc:
+            print(str(exc))
+            return 1
     try:
         pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
     except Exception as exc:
