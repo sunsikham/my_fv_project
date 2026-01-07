@@ -41,3 +41,17 @@ def build_zero_shot_prompt(rng: random.Random) -> Tuple[str, str]:
     query, answer = rng.choice(ANTONYM_PAIRS)
     lines = ["Antonyms:", f"{query} ->"]
     return "\n".join(lines), answer
+
+
+def build_prompt_qa(
+    demos: List[Tuple[str, str]], query: Tuple[str, str]
+) -> Tuple[str, str]:
+    """Build Q/A style prompt with a single trailing space after 'A:'."""
+    demo_blocks = [f"Q: {x}\nA: {y}" for x, y in demos]
+    query_prefix = f"Q: {query[0]}\nA: "
+    if demo_blocks:
+        prefix_str = "\n\n".join(demo_blocks + [query_prefix])
+    else:
+        prefix_str = query_prefix
+    full_str = prefix_str + query[1]
+    return prefix_str, full_str
