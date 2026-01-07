@@ -7,17 +7,18 @@ import random
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from fv.dataset_loader import load_pairs_antonym
 from fv.model_spec import get_model_spec
 from fv.intervene import make_residual_injection_hook
 from fv.io import load_json, prepare_run_dirs, resolve_out_dir, save_step6_results
 from fv.adapters import infer_head_dims, resolve_blocks
-from fv.prompting import build_zero_shot_prompt
+from fv.slots import compute_query_predictive_slot
 
 
 def summarize_prompt(prompt: str, limit: int = 80) -> str:
@@ -26,22 +27,15 @@ def summarize_prompt(prompt: str, limit: int = 80) -> str:
     return prompt[: limit - 3] + "..."
 
 
-def get_target_token(answer: str, tokenizer) -> Tuple[int, str, bool]:
+def infer_leading_space(answer: str, tokenizer) -> bool:
     with_space = " " + answer
     ids_with_space = tokenizer.encode(with_space, add_special_tokens=False)
-    leading_space = True
-    token_ids = ids_with_space
-
-    if not token_ids:
-        token_ids = tokenizer.encode(answer, add_special_tokens=False)
-        leading_space = False
-
+    if ids_with_space:
+        return True
+    token_ids = tokenizer.encode(answer, add_special_tokens=False)
     if not token_ids:
         raise ValueError(f"Failed to tokenize answer: '{answer}'")
-
-    token_id = token_ids[0]
-    token_str = tokenizer.convert_ids_to_tokens(token_id)
-    return token_id, token_str, leading_space
+    return False
 
 
 def parse_answer_override(value: str, tokenizer) -> Dict[str, int]:
@@ -82,9 +76,28 @@ def resolve_dtype(dtype_str: str, torch_module):
     return mapping[dtype_str]
 
 
+def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
+    try:
+        return compute_query_predictive_slot(prefix_str, full_str, tokenizer), False
+    except ValueError as exc:
+        message = str(exc)
+        if "Target id mismatch" not in message:
+            raise
+        trimmed_prefix = prefix_str.rstrip(" ")
+        if trimmed_prefix == prefix_str:
+            raise
+        log("retrying slot computation with trimmed prefix space")
+        return compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer), True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP 6 FV injection eval.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
+    parser.add_argument(
+        "--dataset_path",
+        default="datasets/processed/antonym.json",
+        help="Path to antonym dataset JSON",
+    )
     parser.add_argument(
         "--model_spec",
         default="gpt2",
@@ -245,6 +258,7 @@ def main() -> int:
     print(f"transformers: {transformers.__version__}")
     print(f"seed: {args.seed}")
     print(f"model: {args.model}")
+    print(f"dataset_path: {args.dataset_path}")
     print(f"model_spec: {args.model_spec}")
     print(f"edit_layer: {args.edit_layer}")
     print(f"use_fv_by_layer: {args.use_fv_by_layer}")
@@ -284,6 +298,18 @@ def main() -> int:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
+    try:
+        pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
+    except Exception as exc:
+        print(f"Failed to load dataset: {exc}")
+        return 1
+    if not pairs:
+        print("Dataset returned no valid pairs.")
+        return 1
+    example_x, example_y = random.Random(args.seed).choice(pairs)
+    example_prefix = f"Q: {example_x}\nA: "
+    print(f"example_pair: input='{example_x}' output='{example_y}'")
+    print(f"prefix_endswith_A_space: {example_prefix.endswith('A: ')}")
     try:
         dims = infer_head_dims(model, spec_name=args.model_spec)
     except ValueError as exc:
@@ -413,12 +439,12 @@ def main() -> int:
         print("batch_size must be >= 1")
         return 1
 
-    rng = random.Random(args.seed)
     results = []
     sum_base = 0.0
     sum_with = 0.0
     sum_delta = 0.0
     sum_delta_logit = 0.0
+    fallback_used_count = 0
 
     override_info = {}
     try:
@@ -447,10 +473,25 @@ def main() -> int:
 
         remaining = args.n_eval - idx
         batch_size = min(args.batch_size, remaining)
-        for _ in range(batch_size):
-            prompt, answer = build_zero_shot_prompt(rng)
+        for offset in range(batch_size):
+            sample_idx = idx + offset
+            sample_rng = random.Random(args.seed + sample_idx)
+            x_val, y_val = sample_rng.choice(pairs)
+            prefix_str = f"Q: {x_val}\nA: "
+            full_str = prefix_str + y_val
             try:
-                target_id, target_token, leading_space = get_target_token(answer, tokenizer)
+                slot_info, fallback_used = compute_slot_with_fallback(
+                    prefix_str, full_str, tokenizer, log
+                )
+            except ValueError as exc:
+                print(str(exc))
+                return 1
+            if fallback_used:
+                fallback_used_count += 1
+            target_id = slot_info["target_id"]
+            target_token = tokenizer.convert_ids_to_tokens(target_id)
+            try:
+                leading_space = infer_leading_space(y_val, tokenizer)
             except ValueError as exc:
                 print(str(exc))
                 return 1
@@ -461,8 +502,8 @@ def main() -> int:
                 target_used = override_info["override_id"]
                 target_used_token = override_info["override_str"]
 
-            batch_prompts.append(prompt)
-            batch_answers.append(answer)
+            batch_prompts.append(prefix_str)
+            batch_answers.append(y_val)
             batch_targets.append(target_id)
             batch_target_tokens.append(target_token)
             batch_leading_spaces.append(leading_space)
@@ -551,6 +592,9 @@ def main() -> int:
                 }
             )
             idx += 1
+
+    print(f"fallback_used_count: {fallback_used_count}")
+    log(f"fallback_used_count: {fallback_used_count}")
 
     mean_base = sum_base / args.n_eval if args.n_eval else 0.0
     mean_with = sum_with / args.n_eval if args.n_eval else 0.0
