@@ -21,5 +21,17 @@ python scripts/run_stepD_aie_head_sweep.py --model gpt2 --layers 0-11 --heads al
 python scripts/run_stepE_topk_fv_and_eval.py --run_id_stepD aie_smoke_001 --k 20 --model gpt2 --alpha 1.0 --n_eval_trials 20 --run_id stepE_smoke_001
 ```
 
+## Phase0 smoke (local CPU friendly)
+Use tiny LLaMA to pass Phase0 without LLaMA3 8B/70B weights.
+python scripts/smoke_resolve_spec_outproj.py --model gpt2 --model_spec gpt2 --layer 0 --device cpu --dtype fp32
+python scripts/smoke_resolve_spec_outproj.py --model hf-internal-testing/tiny-random-LlamaForCausalLM --model_spec llama3 --layer 0 --device cpu --dtype fp32
+(if resolve fails)
+python scripts/smoke_resolve_spec_outproj.py --model hf-internal-testing/tiny-random-LlamaForCausalLM --model_spec llama3_wrapped --layer 0 --device cpu --dtype fp32
+python scripts/smoke_resolve_spec_outproj.py --model gpt2 --model_spec gpt2 --layer 0 --device cpu --dtype fp32 --negative
+Success criteria:
+- resolve blocks/attn/out_proj logs are printed.
+- out_proj pre-hook runs; captured tensor shape is (B,S,H)-like and last dim H matches hidden_size.
+- In --negative mode, resolution must fail (script exits 0).
+
 Runs default to `runs/<run_id>/artifacts` and `runs/<run_id>/logs` (override with `--out_dir`).
 To inspect outputs in a run: `python scripts/inspect_artifacts.py --run_id <run_id> step5/`

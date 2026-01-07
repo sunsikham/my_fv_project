@@ -13,9 +13,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.corrupt import make_corrupted_demos
-from fv.hooks import get_c_proj_pre_hook, reshape_resid_to_heads
+from fv.hooks import get_out_proj_pre_hook_target, reshape_resid_to_heads
 from fv.io import prepare_run_dirs, resolve_out_dir, save_csv, save_json
-from fv.model_config import get_model_config
+from fv.adapters import infer_head_dims, resolve_blocks
+from fv.model_spec import get_model_spec
 from fv.patch import make_cproj_head_replacer
 from fv.prompting import ANTONYM_PAIRS
 from fv.slots import compute_query_predictive_slot
@@ -151,6 +152,11 @@ def compute_clean_mean(
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP D AIE head sweep.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
+    parser.add_argument(
+        "--model_spec",
+        default="gpt2",
+        help="Model spec name for adapter resolution (default: gpt2)",
+    )
     parser.add_argument("--layers", default="0", help="Layer list (default: 0)")
     parser.add_argument("--heads", default="all", help="Head list or 'all' (default: all)")
     parser.add_argument("--n_trials", type=int, default=20, help="Number of trials (default: 20)")
@@ -201,6 +207,7 @@ def main() -> int:
     log(f"artifacts_dir: {artifacts_dir}")
     log(f"log_path: {log_path}")
     log(f"model: {args.model}")
+    log(f"model_spec: {args.model_spec}")
     log(f"layers: {args.layers}")
     log(f"heads: {args.heads}")
     log(f"n_trials: {args.n_trials}")
@@ -216,9 +223,10 @@ def main() -> int:
         log_file.close()
         return 1
 
-    model_cfg = get_model_config(args.model)
-    if model_cfg is None:
-        log(f"No model config found for '{args.model}'")
+    try:
+        spec = get_model_spec(args.model_spec)
+    except ValueError as exc:
+        log(str(exc))
         log_file.close()
         return 1
 
@@ -244,15 +252,23 @@ def main() -> int:
     model.eval()
 
     try:
-        layers = parse_layers(args.layers)
+        dims = infer_head_dims(model, spec_name=args.model_spec)
     except ValueError as exc:
         log(str(exc))
         log_file.close()
         return 1
 
-    n_heads = int(model_cfg["n_heads"])
-    head_dim = int(model_cfg["head_dim"])
-    resid_dim = int(model_cfg["resid_dim"])
+    n_heads = int(dims["n_heads"])
+    head_dim = int(dims["head_dim"])
+    resid_dim = int(dims["hidden_size"])
+    model_cfg = {"n_heads": n_heads, "head_dim": head_dim, "resid_dim": resid_dim}
+
+    try:
+        layers = parse_layers(args.layers)
+    except ValueError as exc:
+        log(str(exc))
+        log_file.close()
+        return 1
 
     try:
         heads = parse_heads(args.heads, n_heads)
@@ -265,13 +281,14 @@ def main() -> int:
         log_file.close()
         return 1
 
-    if not hasattr(model, "transformer") or not hasattr(model.transformer, "h"):
-        log("Model does not expose transformer.h blocks.")
+    try:
+        blocks = resolve_blocks(model, spec, logger=log)
+    except ValueError as exc:
+        log(str(exc))
         log_file.close()
         return 1
-    n_layers = len(model.transformer.h)
     for layer in layers:
-        if layer < 0 or layer >= n_layers:
+        if layer < 0 or layer >= len(blocks):
             log("Layer index out of range")
             log_file.close()
             return 1
@@ -327,7 +344,14 @@ def main() -> int:
 
     layer_modules = {}
     for layer in layers:
-        target_module, _target_name = get_c_proj_pre_hook(model, layer)
+        try:
+            target_module, _target_name = get_out_proj_pre_hook_target(
+                model, layer, spec_name=args.model_spec, logger=log
+            )
+        except ValueError as exc:
+            log(str(exc))
+            log_file.close()
+            return 1
         layer_modules[layer] = target_module
 
     log("computing clean_mean")
@@ -356,6 +380,7 @@ def main() -> int:
             "n_heads": n_heads,
             "head_dim": head_dim,
             "resid_dim": resid_dim,
+            "model_spec": args.model_spec,
             "clean_mean": {layer: clean_mean[layer].cpu() for layer in layers},
         },
         clean_mean_path,
@@ -452,6 +477,7 @@ def main() -> int:
         {
             "meta": {
                 "model": args.model,
+                "model_spec": args.model_spec,
                 "layers": layers,
                 "heads": heads,
                 "n_trials": args.n_trials,
