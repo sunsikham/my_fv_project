@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from importlib.util import find_spec
-from typing import Optional, Tuple
+from typing import Optional
 
 from .adapters import resolve_attn, resolve_blocks, resolve_out_proj
 from .model_spec import get_model_spec
@@ -107,23 +107,20 @@ def load_hf_model_and_tokenizer(
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
     model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
 
-    if resolved_device_map is None and device:
+    if resolved_device_map is None and device and resolved_quant not in {"4bit", "8bit"}:
         model.to(device)
 
     out_proj_class = _infer_out_proj_class(model, model_spec)
     has_hf_device_map = hasattr(model, "hf_device_map")
 
-    diagnostics = "\n".join(
-        [
-            "hf_loader diagnostics:",
-            f"- model_name: {model_name}",
-            f"- model_spec: {model_spec}",
-            f"- resolved_quant: {resolved_quant}",
-            f"- resolved_device_map: {resolved_device_map}",
-            f"- resolved_dtype: {resolved_dtype}",
-            f"- has_hf_device_map: {has_hf_device_map}",
-            f"- out_proj_class: {out_proj_class}",
-        ]
-    )
+    diagnostics = {
+        "model_name": model_name,
+        "model_spec": model_spec,
+        "resolved_quant": resolved_quant,
+        "resolved_device_map": resolved_device_map,
+        "resolved_dtype": resolved_dtype,
+        "has_hf_device_map": has_hf_device_map,
+        "out_proj_class": out_proj_class,
+    }
 
     return model, tokenizer, diagnostics

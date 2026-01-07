@@ -18,6 +18,7 @@ from fv.corrupt import make_corrupted_demos
 from fv.dataset_loader import load_pairs_antonym, sample_demos_and_query
 from fv.intervene import make_residual_injection_hook
 from fv.io import prepare_run_dirs, resolve_out_dir, save_json
+from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.model_spec import get_model_spec
 from fv.prompting import build_prompt_qa
 from fv.slots import compute_query_predictive_slot
@@ -131,6 +132,29 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=20, help="Top-k heads (default: 20)")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
     parser.add_argument(
+        "--device",
+        default=None,
+        choices=["cpu", "cuda", "auto"],
+        help="Device (default: cuda if available else cpu)",
+    )
+    parser.add_argument(
+        "--dtype",
+        default=None,
+        choices=["fp16", "bf16", "fp32"],
+        help="Model dtype (default: fp16 on cuda else fp32)",
+    )
+    parser.add_argument(
+        "--quant",
+        default="auto",
+        choices=["auto", "none", "4bit", "8bit"],
+        help="Quantization mode (default: auto)",
+    )
+    parser.add_argument(
+        "--device_map",
+        default=None,
+        help="Optional HF device_map (default: None or 'auto')",
+    )
+    parser.add_argument(
         "--dataset_path",
         default="datasets/processed/antonym.json",
         help="Path to antonym dataset JSON",
@@ -195,11 +219,15 @@ def main() -> int:
     try:
         import torch
         import transformers
-        from transformers import AutoModelForCausalLM, AutoTokenizer
     except Exception as exc:  # pragma: no cover - runtime import check
         log(f"Failed to import required libraries: {exc}")
         log_file.close()
         return 1
+
+    if args.device in (None, "auto"):
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.dtype is None:
+        args.dtype = "fp16" if args.device == "cuda" else "fp32"
 
     try:
         pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
@@ -291,8 +319,21 @@ def main() -> int:
     resid_dim_blob = int(clean_mean_blob["resid_dim"])
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(args.model)
-        model = AutoModelForCausalLM.from_pretrained(args.model)
+        loader_device = None if args.device_map else args.device
+        model, tokenizer, diagnostics = load_hf_model_and_tokenizer(
+            model_name=args.model,
+            model_spec=args.model_spec,
+            device=loader_device,
+            dtype=args.dtype,
+            quant=args.quant,
+            device_map=args.device_map,
+        )
+        log(
+            "hf_loader diagnostics: "
+            + " ".join(
+                f"{key}={value}" for key, value in diagnostics.items()
+            )
+        )
     except Exception as exc:  # pragma: no cover - runtime load check
         log(f"Failed to load model '{args.model}': {exc}")
         log_file.close()
@@ -302,8 +343,18 @@ def main() -> int:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+    device = torch.device(args.device)
+    resolved_quant = diagnostics.get("resolved_quant") if diagnostics else None
+    if args.device_map:
+        log("device_map provided; skipping model.to(device)")
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            pass
+    elif resolved_quant in {"4bit", "8bit"}:
+        log("quantized model; skipping model.to(device)")
+    else:
+        model.to(device)
     model.eval()
 
     try:
