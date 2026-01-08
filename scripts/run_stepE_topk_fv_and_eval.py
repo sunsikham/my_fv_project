@@ -132,6 +132,12 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=20, help="Top-k heads (default: 20)")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
     parser.add_argument(
+        "--metric",
+        default="mean_cie",
+        choices=["mean_cie", "mean_abs_cie"],
+        help="AIE ranking score column (default: mean_cie)",
+    )
+    parser.add_argument(
         "--device",
         default=None,
         choices=["cpu", "cuda", "auto"],
@@ -172,6 +178,11 @@ def main() -> int:
         default=20,
         help="Evaluation trials (default: 20)",
     )
+    parser.add_argument(
+        "--skip_eval",
+        action="store_true",
+        help="Skip StepE eval (no stepE_eval.json)",
+    )
     parser.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
     parser.add_argument(
         "--run_id",
@@ -208,12 +219,14 @@ def main() -> int:
     log(f"log_path: {log_path}")
     log(f"run_id_stepD: {args.run_id_stepD}")
     log(f"model: {args.model}")
+    log(f"metric: {args.metric}")
     log(f"dataset_path: {args.dataset_path}")
     log(f"model_spec: {args.model_spec}")
     log(f"k: {args.k}")
     log(f"layers: {args.layers}")
     log(f"alpha: {args.alpha}")
     log(f"n_eval_trials: {args.n_eval_trials}")
+    log(f"skip_eval: {args.skip_eval}")
     log(f"seed: {args.seed}")
 
     try:
@@ -258,6 +271,17 @@ def main() -> int:
     scores = []
     with open(scores_path, newline="") as f:
         reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            log("aie_scores.csv missing header row")
+            log_file.close()
+            return 1
+        if args.metric not in reader.fieldnames:
+            log(
+                "Requested metric not found in aie_scores.csv: "
+                f"metric='{args.metric}' available={reader.fieldnames}"
+            )
+            log_file.close()
+            return 1
         for row in reader:
             scores.append(row)
 
@@ -279,23 +303,26 @@ def main() -> int:
         for row in scores
         if int(row["layer"]) in layer_filter
     ]
-    filtered.sort(key=lambda r: float(r["mean_cie"]), reverse=True)
+    filtered.sort(key=lambda r: float(r[args.metric]), reverse=True)
     top_rows = filtered[: args.k]
     if not top_rows:
         log("No heads found for top-k selection")
         log_file.close()
         return 1
 
-    top_heads = [
-        {
-            "layer": int(row["layer"]),
-            "head": int(row["head"]),
-            "mean_cie": float(row["mean_cie"]),
-            "std_cie": float(row["std_cie"]),
-            "n_trials": int(row["n_trials"]),
-        }
-        for row in top_rows
-    ]
+    top_heads = []
+    for row in top_rows:
+        top_heads.append(
+            {
+                "layer": int(row["layer"]),
+                "head": int(row["head"]),
+                "mean_cie": float(row["mean_cie"]),
+                "mean_abs_cie": float(row["mean_abs_cie"]),
+                "std_cie": float(row["std_cie"]),
+                "n_trials": int(row["n_trials"]),
+                "rank_score": float(row[args.metric]),
+            }
+        )
 
     top_heads_path = os.path.join(artifacts_dir, "top_heads.json")
     save_json(
@@ -306,6 +333,7 @@ def main() -> int:
                 "k": args.k,
                 "model": args.model,
                 "model_spec": args.model_spec,
+                "rank_metric": args.metric,
             },
             "heads": top_heads,
         },
@@ -466,6 +494,11 @@ def main() -> int:
         },
     )
     log(f"saved fv_global_resid metadata: {fv_global_meta_path}")
+
+    if args.skip_eval:
+        log("skip_eval enabled; skipping stepE_eval.json")
+        log_file.close()
+        return 0
 
     if len(pairs) < 4:
         log("Not enough dataset pairs for requested demos + query.")
