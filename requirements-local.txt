@@ -8,3 +8,4 @@ pandas
 tqdm
 rich
 python-dotenv
+matplotlib

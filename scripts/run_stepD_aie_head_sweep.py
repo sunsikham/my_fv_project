@@ -190,7 +190,11 @@ def main() -> int:
         default=None,
         help="Optional HF device_map (default: None or 'auto')",
     )
-    parser.add_argument("--layers", default="0", help="Layer list (default: 0)")
+    parser.add_argument(
+        "--layers",
+        default="0",
+        help="Layer list (examples: --layers all, --layers 0,1,2,3)",
+    )
     parser.add_argument("--heads", default="all", help="Head list or 'all' (default: all)")
     parser.add_argument("--n_trials", type=int, default=20, help="Number of trials (default: 20)")
     parser.add_argument(
@@ -332,11 +336,41 @@ def main() -> int:
     model_cfg = {"n_heads": n_heads, "head_dim": head_dim, "resid_dim": resid_dim}
 
     try:
-        layers = parse_layers(args.layers)
+        blocks = resolve_blocks(model, spec, logger=log)
     except ValueError as exc:
         log(str(exc))
         log_file.close()
         return 1
+
+    layer_count = len(blocks)
+    if layer_count == 0:
+        log("No layers available in resolved blocks")
+        log_file.close()
+        return 1
+    if args.layers.strip().lower() == "all":
+        layers = list(range(layer_count))
+        log(f"[StepD] layers=all resolved to 0..{layer_count - 1} (n={layer_count})")
+    else:
+        try:
+            layers = parse_layers(args.layers)
+        except ValueError as exc:
+            log(str(exc))
+            log_file.close()
+            return 1
+        if not layers:
+            log("No layers selected")
+            log_file.close()
+            return 1
+        min_layer = min(layers)
+        max_layer = max(layers)
+        if min_layer < 0 or max_layer >= layer_count:
+            log(
+                "Layer index out of range: "
+                f"allowed=[0, {layer_count - 1}] got={layers}"
+            )
+            log_file.close()
+            return 1
+        log(f"[StepD] sweeping layers: {min_layer}..{max_layer} (n={len(layers)})")
 
     try:
         heads = parse_heads(args.heads, n_heads)
@@ -348,18 +382,6 @@ def main() -> int:
         log("No heads selected")
         log_file.close()
         return 1
-
-    try:
-        blocks = resolve_blocks(model, spec, logger=log)
-    except ValueError as exc:
-        log(str(exc))
-        log_file.close()
-        return 1
-    for layer in layers:
-        if layer < 0 or layer >= len(blocks):
-            log("Layer index out of range")
-            log_file.close()
-            return 1
     for head in heads:
         if head < 0 or head >= n_heads:
             log("Head index out of range")
