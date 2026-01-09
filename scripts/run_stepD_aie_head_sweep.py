@@ -104,6 +104,7 @@ def compute_clean_mean(
     resid_dim,
     layer_modules,
     log,
+    add_special_tokens: bool = False,
 ):
     import torch
 
@@ -127,7 +128,9 @@ def compute_clean_mean(
         handle = layer_modules[layer].register_forward_pre_hook(pre_hook)
         for prefix in prefixes:
             state["current"] = None
-            inputs = tokenizer(prefix, return_tensors="pt", add_special_tokens=False)
+            inputs = tokenizer(
+                prefix, return_tensors="pt", add_special_tokens=add_special_tokens
+            )
             inputs = {key: value.to(device) for key, value in inputs.items()}
             with torch.inference_mode():
                 _ = model(**inputs)
@@ -160,9 +163,16 @@ def format_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{sec:02d}"
 
 
-def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
+def compute_slot_with_fallback(
+    prefix_str: str, full_str: str, tokenizer, log, add_special_tokens: bool = False
+):
     try:
-        return compute_query_predictive_slot(prefix_str, full_str, tokenizer)
+        return compute_query_predictive_slot(
+            prefix_str,
+            full_str,
+            tokenizer,
+            add_special_tokens=add_special_tokens,
+        )
     except ValueError as exc:
         message = str(exc)
         if "Target id mismatch" not in message:
@@ -171,7 +181,12 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
         if trimmed_prefix == prefix_str:
             raise
         log("retrying slot computation with trimmed prefix space")
-        return compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer)
+        return compute_query_predictive_slot(
+            trimmed_prefix,
+            full_str,
+            tokenizer,
+            add_special_tokens=add_special_tokens,
+        )
 
 
 def main() -> int:
@@ -298,6 +313,8 @@ def main() -> int:
         log(str(exc))
         log_file.close()
         return 1
+    tok_add_special = bool(spec.prepend_bos)
+    log(f"tok_add_special: {tok_add_special}")
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -445,10 +462,18 @@ def main() -> int:
 
         try:
             clean_slot = compute_slot_with_fallback(
-                clean_prefix_str, clean_full_str, tokenizer, log
+                clean_prefix_str,
+                clean_full_str,
+                tokenizer,
+                log,
+                add_special_tokens=tok_add_special,
             )
             corrupted_slot = compute_slot_with_fallback(
-                corrupted_prefix_str, corrupted_full_str, tokenizer, log
+                corrupted_prefix_str,
+                corrupted_full_str,
+                tokenizer,
+                log,
+                add_special_tokens=tok_add_special,
             )
         except ValueError as exc:
             log(str(exc))
@@ -495,6 +520,7 @@ def main() -> int:
             resid_dim,
             layer_modules,
             log,
+            add_special_tokens=tok_add_special,
         )
     except ValueError as exc:
         log(str(exc))
@@ -551,101 +577,103 @@ def main() -> int:
                 f"ETA={format_duration(eta)}"
             )
 
+        cie_vals = {"logit": [], "p": [], "logprob": []}
+        nonzero = False
+        for trial in trials:
+            prefix_str = trial["corrupted_prefix_str"]
+            target_id = trial["target_id"]
+
+            inputs = tokenizer(
+                prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+            )
+            inputs = {key: value.to(device) for key, value in inputs.items()}
+            last_index = inputs["input_ids"].shape[1] - 1
+
+            with torch.inference_mode():
+                outputs = model(**inputs)
+            baseline_logits = outputs.logits[0, last_index]
+            baseline_logit = baseline_logits[target_id].item()
+            baseline_scores = compute_token_scores(baseline_logits, target_id)
+
+            replace_vec = clean_mean[layer][head]
+            hook = make_cproj_head_replacer(
+                layer_idx=layer,
+                head_idx=head,
+                token_idx=-1,
+                mode="replace",
+                replace_vec=replace_vec,
+                model_config=model_cfg,
+                logger=None,
+            )
+            handle = layer_modules[layer].register_forward_pre_hook(hook)
+            with torch.inference_mode():
+                outputs_patched = model(**inputs)
+            handle.remove()
+
+            patched_logits = outputs_patched.logits[0, last_index]
+            patched_logit = patched_logits[target_id].item()
+            patched_scores = compute_token_scores(patched_logits, target_id)
+            delta_scores = {
+                key: (patched_scores[key] - baseline_scores[key]).item()
+                for key in baseline_scores
+            }
+            for key, value in delta_scores.items():
+                cie_vals[key].append(value)
+            if abs(delta_scores[args.cie_metric]) > 1e-12:
+                nonzero = True
+
+            if args.save_trials:
+                trials_rows.append(
+                    {
+                        "trial_idx": trial["trial_idx"],
+                        "layer": layer,
+                        "head": head,
+                        "baseline_logit": baseline_logit,
+                        "patched_logit": patched_logit,
+                        "cie": delta_scores[args.cie_metric],
+                        "target_id": target_id,
+                    }
+                )
+
+        clean_norm = clean_mean[layer][head].norm().item()
+        mean_cie_logit = mean(cie_vals["logit"])
+        std_cie_logit = std(cie_vals["logit"])
+        mean_cie_p = mean(cie_vals["p"])
+        std_cie_p = std(cie_vals["p"])
+        mean_cie_logprob = mean(cie_vals["logprob"])
+        std_cie_logprob = std(cie_vals["logprob"])
+        if args.cie_metric == "logit":
+            mean_cie = mean_cie_logit
+            std_cie = std_cie_logit
+            mean_abs_cie = mean_abs(cie_vals["logit"])
+        elif args.cie_metric == "p":
+            mean_cie = mean_cie_p
+            std_cie = std_cie_p
+            mean_abs_cie = mean_abs(cie_vals["p"])
+        else:
+            mean_cie = mean_cie_logprob
+            std_cie = std_cie_logprob
+            mean_abs_cie = mean_abs(cie_vals["logprob"])
+        scores.append(
+            {
+                "layer": layer,
+                "head": head,
+                "n_trials": args.n_trials,
+                "mean_cie": mean_cie,
+                "std_cie": std_cie,
+                "mean_abs_cie": mean_abs_cie,
+                "mean_cie_logit": mean_cie_logit,
+                "std_cie_logit": std_cie_logit,
+                "mean_cie_p": mean_cie_p,
+                "std_cie_p": std_cie_p,
+                "mean_cie_logprob": mean_cie_logprob,
+                "std_cie_logprob": std_cie_logprob,
+                "any_nonzero": nonzero,
+                "clean_mean_norm": clean_norm,
+            }
+        )
         if pbar is not None:
             pbar.update(1)
-            cie_vals = {"logit": [], "p": [], "logprob": []}
-            nonzero = False
-            for trial in trials:
-                prefix_str = trial["corrupted_prefix_str"]
-                target_id = trial["target_id"]
-
-                inputs = tokenizer(prefix_str, return_tensors="pt", add_special_tokens=False)
-                inputs = {key: value.to(device) for key, value in inputs.items()}
-                last_index = inputs["input_ids"].shape[1] - 1
-
-                with torch.inference_mode():
-                    outputs = model(**inputs)
-                baseline_logits = outputs.logits[0, last_index]
-                baseline_logit = baseline_logits[target_id].item()
-                baseline_scores = compute_token_scores(baseline_logits, target_id)
-
-                replace_vec = clean_mean[layer][head]
-                hook = make_cproj_head_replacer(
-                    layer_idx=layer,
-                    head_idx=head,
-                    token_idx=-1,
-                    mode="replace",
-                    replace_vec=replace_vec,
-                    model_config=model_cfg,
-                    logger=None,
-                )
-                handle = layer_modules[layer].register_forward_pre_hook(hook)
-                with torch.inference_mode():
-                    outputs_patched = model(**inputs)
-                handle.remove()
-
-                patched_logits = outputs_patched.logits[0, last_index]
-                patched_logit = patched_logits[target_id].item()
-                patched_scores = compute_token_scores(patched_logits, target_id)
-                delta_scores = {
-                    key: (patched_scores[key] - baseline_scores[key]).item()
-                    for key in baseline_scores
-                }
-                for key, value in delta_scores.items():
-                    cie_vals[key].append(value)
-                if abs(delta_scores[args.cie_metric]) > 1e-12:
-                    nonzero = True
-
-                if args.save_trials:
-                    trials_rows.append(
-                        {
-                            "trial_idx": trial["trial_idx"],
-                            "layer": layer,
-                            "head": head,
-                            "baseline_logit": baseline_logit,
-                            "patched_logit": patched_logit,
-                            "cie": delta_scores[args.cie_metric],
-                            "target_id": target_id,
-                        }
-                    )
-
-            clean_norm = clean_mean[layer][head].norm().item()
-            mean_cie_logit = mean(cie_vals["logit"])
-            std_cie_logit = std(cie_vals["logit"])
-            mean_cie_p = mean(cie_vals["p"])
-            std_cie_p = std(cie_vals["p"])
-            mean_cie_logprob = mean(cie_vals["logprob"])
-            std_cie_logprob = std(cie_vals["logprob"])
-            if args.cie_metric == "logit":
-                mean_cie = mean_cie_logit
-                std_cie = std_cie_logit
-                mean_abs_cie = mean_abs(cie_vals["logit"])
-            elif args.cie_metric == "p":
-                mean_cie = mean_cie_p
-                std_cie = std_cie_p
-                mean_abs_cie = mean_abs(cie_vals["p"])
-            else:
-                mean_cie = mean_cie_logprob
-                std_cie = std_cie_logprob
-                mean_abs_cie = mean_abs(cie_vals["logprob"])
-            scores.append(
-                {
-                    "layer": layer,
-                    "head": head,
-                    "n_trials": args.n_trials,
-                    "mean_cie": mean_cie,
-                    "std_cie": std_cie,
-                    "mean_abs_cie": mean_abs_cie,
-                    "mean_cie_logit": mean_cie_logit,
-                    "std_cie_logit": std_cie_logit,
-                    "mean_cie_p": mean_cie_p,
-                    "std_cie_p": std_cie_p,
-                    "mean_cie_logprob": mean_cie_logprob,
-                    "std_cie_logprob": std_cie_logprob,
-                    "any_nonzero": nonzero,
-                    "clean_mean_norm": clean_norm,
-                }
-            )
     if pbar is not None:
         pbar.close()
 
