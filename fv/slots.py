@@ -3,15 +3,22 @@
 from typing import Dict
 
 
-def compute_query_predictive_slot(prefix_str: str, full_str: str, tokenizer) -> Dict[str, object]:
-    prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=False)
-    full_ids = tokenizer.encode(full_str, add_special_tokens=False)
+def compute_query_predictive_slot(
+    prefix_str: str,
+    full_str: str,
+    tokenizer,
+    add_special_tokens: bool = False,
+) -> Dict[str, object]:
+    prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=add_special_tokens)
+    full_ids = tokenizer.encode(full_str, add_special_tokens=add_special_tokens)
 
     s = len(prefix_ids)
     if s >= len(full_ids):
         trimmed_prefix = prefix_str.rstrip(" ")
         if trimmed_prefix != prefix_str:
-            prefix_ids = tokenizer.encode(trimmed_prefix, add_special_tokens=False)
+            prefix_ids = tokenizer.encode(
+                trimmed_prefix, add_special_tokens=add_special_tokens
+            )
             s = len(prefix_ids)
     if s <= 0 or s >= len(full_ids):
         raise ValueError(

@@ -9,3 +9,4 @@ tqdm
 rich
 python-dotenv
 matplotlib
+tqdm
