@@ -4,6 +4,7 @@
 import argparse
 import os
 import random
+import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -130,6 +131,25 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
         return compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer), True
 
 
+def compute_token_scores(logits, target_ids):
+    import torch
+
+    logits32 = logits.float()
+    if torch.is_tensor(target_ids):
+        gathered = logits32.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
+    else:
+        gathered = logits32[..., target_ids]
+    logprob = gathered - torch.logsumexp(logits32, dim=-1)
+    p = torch.exp(logprob)
+    return {"logit": gathered, "logprob": logprob, "p": p}
+
+
+def std(values):
+    if len(values) < 2:
+        return 0.0
+    return statistics.pstdev(values)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP 6 FV injection eval.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
@@ -221,6 +241,12 @@ def main() -> int:
         type=int,
         default=1,
         help="Batch size for eval prompts (default: 1)",
+    )
+    parser.add_argument(
+        "--score_key",
+        default="mean_delta_logprob",
+        choices=["delta_acc", "mean_delta_logprob", "mean_delta_p", "mean_delta_logit"],
+        help="Score key for downstream selection (default: mean_delta_logprob)",
     )
     parser.add_argument(
         "--out_dir",
@@ -317,6 +343,7 @@ def main() -> int:
     print(f"alpha: {args.alpha}")
     print(f"dtype: {args.dtype}")
     print(f"quant: {args.quant}")
+    print(f"score_key: {args.score_key}")
     if args.device_map:
         print(f"device_map: {args.device_map}")
     print(f"batch_size: {args.batch_size}")
@@ -494,6 +521,7 @@ def main() -> int:
     log(f"alpha: {args.alpha}")
     log(f"token_rule: {token_rule}")
     log(f"fv_norm: {fv_norm:.6f}")
+    log(f"score_key: {args.score_key}")
 
     injection_state = {
         "fv": fv,
@@ -509,10 +537,20 @@ def main() -> int:
         return 1
 
     results = []
-    sum_base = 0.0
-    sum_with = 0.0
-    sum_delta = 0.0
+    sum_acc_base = 0.0
+    sum_acc_with = 0.0
+    sum_logit_base = 0.0
+    sum_logit_with = 0.0
+    sum_logprob_base = 0.0
+    sum_logprob_with = 0.0
+    sum_p_base = 0.0
+    sum_p_with = 0.0
     sum_delta_logit = 0.0
+    sum_delta_logprob = 0.0
+    sum_delta_p = 0.0
+    delta_logit_vals = []
+    delta_logprob_vals = []
+    delta_p_vals = []
     fallback_used_count = 0
 
     override_info = {}
@@ -594,10 +632,8 @@ def main() -> int:
             outputs = model(**inputs)
         logits = outputs.logits
         last_logits = logits[batch_indices, last_indices]
-        base_logit_vals = last_logits[batch_indices, target_ids_tensor]
-        base_prob_vals = torch.softmax(last_logits.float(), dim=-1)[
-            batch_indices, target_ids_tensor
-        ]
+        base_scores = compute_token_scores(last_logits, target_ids_tensor)
+        pred_id_base = torch.argmax(last_logits, dim=-1)
 
         injection_state["last_indices"] = last_indices
         injection_state["batch_indices"] = batch_indices
@@ -610,23 +646,36 @@ def main() -> int:
 
         logits_fv = outputs_fv.logits
         last_logits_fv = logits_fv[batch_indices, last_indices]
-        with_logit_vals = last_logits_fv[batch_indices, target_ids_tensor]
-        with_prob_vals = torch.softmax(last_logits_fv.float(), dim=-1)[
-            batch_indices, target_ids_tensor
-        ]
+        with_scores = compute_token_scores(last_logits_fv, target_ids_tensor)
+        pred_id_with = torch.argmax(last_logits_fv, dim=-1)
 
         for i in range(batch_size):
-            base_prob = base_prob_vals[i].item()
-            with_prob = with_prob_vals[i].item()
-            base_logit = base_logit_vals[i].item()
-            with_logit = with_logit_vals[i].item()
+            base_prob = base_scores["p"][i].item()
+            with_prob = with_scores["p"][i].item()
+            base_logit = base_scores["logit"][i].item()
+            with_logit = with_scores["logit"][i].item()
+            base_logprob = base_scores["logprob"][i].item()
+            with_logprob = with_scores["logprob"][i].item()
             delta_p = with_prob - base_prob
             delta_logit = with_logit - base_logit
+            delta_logprob = with_logprob - base_logprob
+            acc_base = 1.0 if pred_id_base[i].item() == batch_used_ids[i] else 0.0
+            acc_with = 1.0 if pred_id_with[i].item() == batch_used_ids[i] else 0.0
 
-            sum_base += base_prob
-            sum_with += with_prob
-            sum_delta += delta_p
+            sum_acc_base += acc_base
+            sum_acc_with += acc_with
+            sum_logit_base += base_logit
+            sum_logit_with += with_logit
+            sum_logprob_base += base_logprob
+            sum_logprob_with += with_logprob
+            sum_p_base += base_prob
+            sum_p_with += with_prob
             sum_delta_logit += delta_logit
+            sum_delta_logprob += delta_logprob
+            sum_delta_p += delta_p
+            delta_logit_vals.append(delta_logit)
+            delta_logprob_vals.append(delta_logprob)
+            delta_p_vals.append(delta_p)
 
             prompt_summary = summarize_prompt(batch_prompts[i])
             print(
@@ -654,10 +703,20 @@ def main() -> int:
                     "leading_space": batch_leading_spaces[i],
                     "used_id": batch_used_ids[i],
                     "used_token": batch_used_tokens[i],
+                    "pred_id_base": int(pred_id_base[i].item()),
+                    "pred_id_with": int(pred_id_with[i].item()),
+                    "accuracy_base": acc_base,
+                    "accuracy_with": acc_with,
+                    "delta_acc": acc_with - acc_base,
+                    "logit_base": base_logit,
+                    "logit_with": with_logit,
+                    "delta_logit": delta_logit,
+                    "logprob_base": base_logprob,
+                    "logprob_with": with_logprob,
+                    "delta_logprob": delta_logprob,
                     "p_base": base_prob,
                     "p_with": with_prob,
                     "delta_p": delta_p,
-                    "delta_logit": delta_logit,
                 }
             )
             idx += 1
@@ -665,15 +724,35 @@ def main() -> int:
     print(f"fallback_used_count: {fallback_used_count}")
     log(f"fallback_used_count: {fallback_used_count}")
 
-    mean_base = sum_base / args.n_eval if args.n_eval else 0.0
-    mean_with = sum_with / args.n_eval if args.n_eval else 0.0
-    mean_delta = sum_delta / args.n_eval if args.n_eval else 0.0
-    mean_delta_logit = sum_delta_logit / args.n_eval if args.n_eval else 0.0
+    denom = args.n_eval if args.n_eval else 1
+    acc_base = sum_acc_base / denom
+    acc_with = sum_acc_with / denom
+    delta_acc = acc_with - acc_base
+    mean_logit_base = sum_logit_base / denom
+    mean_logit_with = sum_logit_with / denom
+    mean_logprob_base = sum_logprob_base / denom
+    mean_logprob_with = sum_logprob_with / denom
+    mean_p_base = sum_p_base / denom
+    mean_p_with = sum_p_with / denom
+    mean_delta_logit = sum_delta_logit / denom
+    mean_delta_logprob = sum_delta_logprob / denom
+    mean_delta_p = sum_delta_p / denom
+    std_delta_logit = std(delta_logit_vals)
+    std_delta_logprob = std(delta_logprob_vals)
+    std_delta_p = std(delta_p_vals)
 
-    print(f"mean(p_base): {mean_base:.6f}")
-    print(f"mean(p_with): {mean_with:.6f}")
-    print(f"mean(delta p): {mean_delta:.6f}")
+    print(f"acc_base: {acc_base:.6f}")
+    print(f"acc_with: {acc_with:.6f}")
+    print(f"delta_acc: {delta_acc:.6f}")
+    print(f"mean(logit_base): {mean_logit_base:.6f}")
+    print(f"mean(logit_with): {mean_logit_with:.6f}")
     print(f"mean(delta logit): {mean_delta_logit:.6f}")
+    print(f"mean(logprob_base): {mean_logprob_base:.6f}")
+    print(f"mean(logprob_with): {mean_logprob_with:.6f}")
+    print(f"mean(delta logprob): {mean_delta_logprob:.6f}")
+    print(f"mean(p_base): {mean_p_base:.6f}")
+    print(f"mean(p_with): {mean_p_with:.6f}")
+    print(f"mean(delta p): {mean_delta_p:.6f}")
 
     step6_metadata = {
         "model": args.model,
@@ -684,6 +763,7 @@ def main() -> int:
         "slot_name": "query_predictive",
         "slot_index_rule": "s=len(tokenize(prefix_str)); slot_index=s-1; target_id=input_ids[s]",
         "token_rule": token_rule,
+        "score_key": args.score_key,
         "heads": fv_meta.get("heads") if fv_meta else None,
         "seed": args.seed,
         "n_eval": args.n_eval,
@@ -718,13 +798,25 @@ def main() -> int:
             "dtype": args.dtype,
             "device": str(device),
             "batch_size": args.batch_size,
+            "score_key": args.score_key,
         },
         "fv": {"shape": list(fv.shape), "norm": fv_norm},
         "summary": {
-            "mean_p_base": mean_base,
-            "mean_p_with": mean_with,
-            "mean_delta_p": mean_delta,
+            "acc_base": acc_base,
+            "acc_with": acc_with,
+            "delta_acc": delta_acc,
+            "mean_logit_base": mean_logit_base,
+            "mean_logit_with": mean_logit_with,
             "mean_delta_logit": mean_delta_logit,
+            "std_delta_logit": std_delta_logit,
+            "mean_logprob_base": mean_logprob_base,
+            "mean_logprob_with": mean_logprob_with,
+            "mean_delta_logprob": mean_delta_logprob,
+            "std_delta_logprob": std_delta_logprob,
+            "mean_p_base": mean_p_base,
+            "mean_p_with": mean_p_with,
+            "mean_delta_p": mean_delta_p,
+            "std_delta_p": std_delta_p,
         },
         "metadata": step6_metadata,
         "results": results,
