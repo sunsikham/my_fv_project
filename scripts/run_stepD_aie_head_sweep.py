@@ -6,6 +6,7 @@ import os
 import random
 import statistics
 import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +29,7 @@ def make_logger(log_path: str):
     log_file = open(log_path, "w", encoding="utf-8")
 
     def log(message: str) -> None:
-        print(message)
+        print(message, flush=True)
         log_file.write(message + "\n")
         log_file.flush()
 
@@ -79,6 +80,17 @@ def mean_abs(values):
     if not values:
         return 0.0
     return sum(abs(value) for value in values) / len(values)
+
+
+def compute_token_scores(logits, target_id):
+    import torch
+
+    logits32 = logits.float()
+    logp_all = logits32 - torch.logsumexp(logits32, dim=-1, keepdim=True)
+    logprob = logp_all[..., target_id]
+    p = torch.exp(logprob)
+    logit = logits32[..., target_id]
+    return {"logit": logit, "p": p, "logprob": logprob}
 
 
 def compute_clean_mean(
@@ -138,6 +150,14 @@ def compute_clean_mean(
         means[layer] = means[layer] / counts[layer]
 
     return means
+
+
+def format_duration(seconds: float) -> str:
+    if seconds < 0:
+        seconds = 0
+    minutes, sec = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours:02d}:{minutes:02d}:{sec:02d}"
 
 
 def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
@@ -220,6 +240,12 @@ def main() -> int:
         default=0,
         help="Save trial-level CSV (default: 0)",
     )
+    parser.add_argument(
+        "--cie_metric",
+        default="logprob",
+        choices=["logit", "p", "logprob"],
+        help="Metric for mean_cie/std_cie (default: logprob)",
+    )
     args = parser.parse_args()
 
     if args.n_trials < 1:
@@ -251,6 +277,7 @@ def main() -> int:
     log(f"n_trials: {args.n_trials}")
     log(f"n_icl_examples: {args.n_icl_examples}")
     log(f"seed: {args.seed}")
+    log(f"cie_metric: {args.cie_metric}")
 
     try:
         import torch
@@ -492,9 +519,41 @@ def main() -> int:
     trials_rows = []
 
     log("starting AIE sweep")
-    for layer in layers:
-        for head in heads:
-            cie_vals = []
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = None
+
+    pairs = [(layer, head) for layer in layers for head in heads]
+    total = len(pairs)
+    log_every = max(1, total // 100)
+    start_time = time.time()
+    pbar = (
+        tqdm(pairs, total=total, desc="StepD layer×head", unit="head")
+        if tqdm is not None
+        else None
+    )
+
+    for idx_pair, (layer, head) in enumerate(pairs, start=1):
+        if pbar is not None:
+            pbar.set_postfix({"layer": layer, "head": head, "trials": args.n_trials})
+        if idx_pair == 1 or idx_pair % log_every == 0 or idx_pair == total:
+            elapsed = time.time() - start_time
+            rate = idx_pair / elapsed if elapsed > 0 else 0.0
+            remaining = total - idx_pair
+            eta = remaining / rate if rate > 0 else 0.0
+            percent = (idx_pair / total) * 100 if total else 100.0
+            log(
+                "[StepD] "
+                f"{percent:.1f}% ({idx_pair}/{total}) "
+                f"layer={layer} head={head} "
+                f"elapsed={format_duration(elapsed)} "
+                f"ETA={format_duration(eta)}"
+            )
+
+        if pbar is not None:
+            pbar.update(1)
+            cie_vals = {"logit": [], "p": [], "logprob": []}
             nonzero = False
             for trial in trials:
                 prefix_str = trial["corrupted_prefix_str"]
@@ -508,6 +567,7 @@ def main() -> int:
                     outputs = model(**inputs)
                 baseline_logits = outputs.logits[0, last_index]
                 baseline_logit = baseline_logits[target_id].item()
+                baseline_scores = compute_token_scores(baseline_logits, target_id)
 
                 replace_vec = clean_mean[layer][head]
                 hook = make_cproj_head_replacer(
@@ -526,9 +586,14 @@ def main() -> int:
 
                 patched_logits = outputs_patched.logits[0, last_index]
                 patched_logit = patched_logits[target_id].item()
-                cie = patched_logit - baseline_logit
-                cie_vals.append(cie)
-                if abs(cie) > 1e-12:
+                patched_scores = compute_token_scores(patched_logits, target_id)
+                delta_scores = {
+                    key: (patched_scores[key] - baseline_scores[key]).item()
+                    for key in baseline_scores
+                }
+                for key, value in delta_scores.items():
+                    cie_vals[key].append(value)
+                if abs(delta_scores[args.cie_metric]) > 1e-12:
                     nonzero = True
 
                 if args.save_trials:
@@ -539,24 +604,50 @@ def main() -> int:
                             "head": head,
                             "baseline_logit": baseline_logit,
                             "patched_logit": patched_logit,
-                            "cie": cie,
+                            "cie": delta_scores[args.cie_metric],
                             "target_id": target_id,
                         }
                     )
 
             clean_norm = clean_mean[layer][head].norm().item()
+            mean_cie_logit = mean(cie_vals["logit"])
+            std_cie_logit = std(cie_vals["logit"])
+            mean_cie_p = mean(cie_vals["p"])
+            std_cie_p = std(cie_vals["p"])
+            mean_cie_logprob = mean(cie_vals["logprob"])
+            std_cie_logprob = std(cie_vals["logprob"])
+            if args.cie_metric == "logit":
+                mean_cie = mean_cie_logit
+                std_cie = std_cie_logit
+                mean_abs_cie = mean_abs(cie_vals["logit"])
+            elif args.cie_metric == "p":
+                mean_cie = mean_cie_p
+                std_cie = std_cie_p
+                mean_abs_cie = mean_abs(cie_vals["p"])
+            else:
+                mean_cie = mean_cie_logprob
+                std_cie = std_cie_logprob
+                mean_abs_cie = mean_abs(cie_vals["logprob"])
             scores.append(
                 {
                     "layer": layer,
                     "head": head,
                     "n_trials": args.n_trials,
-                    "mean_cie": mean(cie_vals),
-                    "std_cie": std(cie_vals),
-                    "mean_abs_cie": mean_abs(cie_vals),
+                    "mean_cie": mean_cie,
+                    "std_cie": std_cie,
+                    "mean_abs_cie": mean_abs_cie,
+                    "mean_cie_logit": mean_cie_logit,
+                    "std_cie_logit": std_cie_logit,
+                    "mean_cie_p": mean_cie_p,
+                    "std_cie_p": std_cie_p,
+                    "mean_cie_logprob": mean_cie_logprob,
+                    "std_cie_logprob": std_cie_logprob,
                     "any_nonzero": nonzero,
                     "clean_mean_norm": clean_norm,
                 }
             )
+    if pbar is not None:
+        pbar.close()
 
     scores_sorted = sorted(scores, key=lambda row: row["mean_cie"], reverse=True)
     log("top-10 by mean_cie:")
@@ -585,7 +676,8 @@ def main() -> int:
                 "n_icl_examples": args.n_icl_examples,
                 "seed": args.seed,
                 "token_idx": -1,
-                "measure": "logit[target_id]",
+                "measure": f"{args.cie_metric}[target_id]",
+                "cie_metric": args.cie_metric,
             },
             "scores": scores_sorted,
         },

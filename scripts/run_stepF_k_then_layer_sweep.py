@@ -109,9 +109,9 @@ def main() -> int:
     parser.add_argument("--n_eval", type=int, default=20, help="Step6 eval prompts")
     parser.add_argument(
         "--score_key",
-        default="mean_delta_p",
-        choices=["mean_delta_p", "mean_delta_logit"],
-        help="Score key from Step6 summary (default: mean_delta_p)",
+        default="mean_delta_logprob",
+        choices=["delta_acc", "mean_delta_logprob", "mean_delta_p", "mean_delta_logit"],
+        help="Score key from Step6 summary (default: mean_delta_logprob)",
     )
     parser.add_argument(
         "--k_list_coarse",
@@ -173,6 +173,7 @@ def main() -> int:
     log("stepF start")
     log(f"run_id: {run_info['run_id']}")
     log(f"log_path: {log_path}")
+    log(f"score_key: {args.score_key}")
 
     stepd_dir = resolve_out_dir(os.path.join("runs", args.run_id_stepD, "artifacts"))
     clean_mean_path = os.path.join(stepd_dir, "clean_mean.pt")
@@ -247,6 +248,7 @@ def main() -> int:
         "--device": args.device,
         "--dtype": args.dtype,
         "--device_map": args.device_map,
+        "--score_key": args.score_key,
     }
 
     k_sweep_rows = []

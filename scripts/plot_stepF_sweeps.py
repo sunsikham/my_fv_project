@@ -133,9 +133,9 @@ def main() -> int:
     parser.add_argument("--run_id_stepF", required=True, help="StepF run_id (required)")
     parser.add_argument(
         "--score_key",
-        default="mean_delta_p",
-        choices=["mean_delta_p", "mean_delta_logit"],
-        help="Score key (default: mean_delta_p)",
+        default="mean_delta_logprob",
+        choices=["delta_acc", "mean_delta_logprob", "mean_delta_p", "mean_delta_logit"],
+        help="Score key (default: mean_delta_logprob)",
     )
     parser.add_argument(
         "--format",
