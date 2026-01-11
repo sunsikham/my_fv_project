@@ -189,6 +189,25 @@ def compute_slot_with_fallback(
         )
 
 
+def check_successful_icl(
+    model, tokenizer, device, prefix_str: str, target_id: int, tok_add_special: bool
+):
+    import torch
+
+    inputs = tokenizer(
+        prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+    )
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+    last_index = inputs["input_ids"].shape[1] - 1
+    with torch.inference_mode():
+        outputs = model(**inputs)
+    logits = outputs.logits[0, last_index]
+    pred_id = int(torch.argmax(logits).item())
+    p_target = torch.softmax(logits.float(), dim=-1)[target_id].item()
+    success = pred_id == target_id
+    return success, p_target
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP D AIE head sweep.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
@@ -238,6 +257,18 @@ def main() -> int:
         default=3,
         help="Number of ICL demos per prompt (default: 3)",
     )
+    parser.add_argument(
+        "--successful_icl_only",
+        type=int,
+        default=1,
+        help="Keep only successful ICL trials (default: 1)",
+    )
+    parser.add_argument(
+        "--max_trial_attempts",
+        type=int,
+        default=None,
+        help="Max attempts when filtering successful ICL (default: n_trials*50)",
+    )
     parser.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
     parser.add_argument(
         "--run_id",
@@ -269,6 +300,11 @@ def main() -> int:
     if args.n_icl_examples < 1:
         print("n_icl_examples must be >= 1")
         return 1
+    if args.successful_icl_only not in (0, 1):
+        print("successful_icl_only must be 0 or 1")
+        return 1
+    if args.max_trial_attempts is None:
+        args.max_trial_attempts = args.n_trials * 50
 
     run_info = prepare_run_dirs(args.run_id)
     if args.out_dir:
@@ -291,6 +327,8 @@ def main() -> int:
     log(f"heads: {args.heads}")
     log(f"n_trials: {args.n_trials}")
     log(f"n_icl_examples: {args.n_icl_examples}")
+    log(f"successful_icl_only: {args.successful_icl_only}")
+    log(f"max_trial_attempts: {args.max_trial_attempts}")
     log(f"seed: {args.seed}")
     log(f"cie_metric: {args.cie_metric}")
 
@@ -441,59 +479,157 @@ def main() -> int:
         return 1
 
     trials = []
+    attempts = 0
+    kept = 0
+    p_targets = []
 
-    for trial_idx in range(args.n_trials):
-        demos, query = sample_demos_and_query(
-            pairs, args.n_icl_examples, seed=args.seed + trial_idx
-        )
-        clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
-        corrupted_demos = make_corrupted_demos(
-            demos, random.Random(args.seed + trial_idx), ensure_derangement=True
-        )
-        corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
-            corrupted_demos, query
-        )
+    if args.successful_icl_only:
+        while len(trials) < args.n_trials:
+            if attempts >= args.max_trial_attempts:
+                log(
+                    "successful ICL이 너무 적으니 n_trials 줄이거나 "
+                    "max_trial_attempts 늘리거나 successful_icl_only=0으로 끄라"
+                )
+                log_file.close()
+                return 1
+            attempt_idx = attempts
+            attempts += 1
+            demos, query = sample_demos_and_query(
+                pairs, args.n_icl_examples, seed=args.seed + attempt_idx
+            )
+            clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
 
-        if trial_idx == 0:
-            log(f"n_pairs_loaded: {len(pairs)}")
-            log(f"n_icl_examples: {args.n_icl_examples}")
-            log(f"example query: input='{query[0]}' output='{query[1]}'")
-            log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
+            if attempts == 1:
+                log(f"n_pairs_loaded: {len(pairs)}")
+                log(f"n_icl_examples: {args.n_icl_examples}")
+                log(f"example query: input='{query[0]}' output='{query[1]}'")
+                log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
-        try:
-            clean_slot = compute_slot_with_fallback(
+            try:
+                clean_slot = compute_slot_with_fallback(
+                    clean_prefix_str,
+                    clean_full_str,
+                    tokenizer,
+                    log,
+                    add_special_tokens=tok_add_special,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+
+            success, p_target = check_successful_icl(
+                model,
+                tokenizer,
+                device,
                 clean_prefix_str,
-                clean_full_str,
-                tokenizer,
-                log,
-                add_special_tokens=tok_add_special,
+                clean_slot["target_id"],
+                tok_add_special,
             )
-            corrupted_slot = compute_slot_with_fallback(
-                corrupted_prefix_str,
-                corrupted_full_str,
-                tokenizer,
-                log,
-                add_special_tokens=tok_add_special,
+            if not success:
+                continue
+
+            corrupted_demos = make_corrupted_demos(
+                demos, random.Random(args.seed + attempt_idx), ensure_derangement=True
             )
-        except ValueError as exc:
-            log(str(exc))
-            log_file.close()
-            return 1
+            corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
+                corrupted_demos, query
+            )
+            try:
+                corrupted_slot = compute_slot_with_fallback(
+                    corrupted_prefix_str,
+                    corrupted_full_str,
+                    tokenizer,
+                    log,
+                    add_special_tokens=tok_add_special,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
 
-        if clean_slot["target_id"] != corrupted_slot["target_id"]:
-            log("target_id mismatch between clean and corrupted")
-            log_file.close()
-            return 1
+            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+                log("target_id mismatch between clean and corrupted")
+                log_file.close()
+                return 1
 
-        trials.append(
-            {
-                "trial_idx": trial_idx,
-                "clean_prefix_str": clean_prefix_str,
-                "corrupted_prefix_str": corrupted_prefix_str,
-                "target_id": clean_slot["target_id"],
-                "target_token": clean_slot["target_token"],
-            }
-        )
+            kept += 1
+            p_targets.append(p_target)
+            trials.append(
+                {
+                    "trial_idx": kept - 1,
+                    "clean_prefix_str": clean_prefix_str,
+                    "corrupted_prefix_str": corrupted_prefix_str,
+                    "target_id": clean_slot["target_id"],
+                    "target_token": clean_slot["target_token"],
+                }
+            )
+    else:
+        for trial_idx in range(args.n_trials):
+            demos, query = sample_demos_and_query(
+                pairs, args.n_icl_examples, seed=args.seed + trial_idx
+            )
+            clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
+            corrupted_demos = make_corrupted_demos(
+                demos, random.Random(args.seed + trial_idx), ensure_derangement=True
+            )
+            corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
+                corrupted_demos, query
+            )
+
+            if trial_idx == 0:
+                log(f"n_pairs_loaded: {len(pairs)}")
+                log(f"n_icl_examples: {args.n_icl_examples}")
+                log(f"example query: input='{query[0]}' output='{query[1]}'")
+                log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
+
+            try:
+                clean_slot = compute_slot_with_fallback(
+                    clean_prefix_str,
+                    clean_full_str,
+                    tokenizer,
+                    log,
+                    add_special_tokens=tok_add_special,
+                )
+                corrupted_slot = compute_slot_with_fallback(
+                    corrupted_prefix_str,
+                    corrupted_full_str,
+                    tokenizer,
+                    log,
+                    add_special_tokens=tok_add_special,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+
+            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+                log("target_id mismatch between clean and corrupted")
+                log_file.close()
+                return 1
+
+            trials.append(
+                {
+                    "trial_idx": trial_idx,
+                    "clean_prefix_str": clean_prefix_str,
+                    "corrupted_prefix_str": corrupted_prefix_str,
+                    "target_id": clean_slot["target_id"],
+                    "target_token": clean_slot["target_token"],
+                }
+            )
+
+        attempts = args.n_trials
+        kept = args.n_trials
+
+    kept_ratio = kept / attempts if attempts else 0.0
+    p_target_mean = mean(p_targets) if p_targets else 0.0
+    log(
+        f"trial_sampling_done attempts={attempts} kept={kept} kept_ratio={kept_ratio:.4f}"
+    )
+    if p_targets:
+        log(f"p_target_mean={p_target_mean:.6f}")
+    else:
+        log("p_target_mean=n/a")
 
     layer_modules = {}
     for layer in layers:
@@ -540,6 +676,21 @@ def main() -> int:
         clean_mean_path,
     )
     log(f"saved clean_mean: {clean_mean_path}")
+
+    stepd_filter_path = os.path.join(artifacts_dir, "stepD_success_filter.json")
+    save_json(
+        stepd_filter_path,
+        {
+            "successful_icl_only": args.successful_icl_only,
+            "max_trial_attempts": args.max_trial_attempts,
+            "attempts": attempts,
+            "kept": kept,
+            "kept_ratio": kept_ratio,
+            "seed": args.seed,
+            "n_icl_examples": args.n_icl_examples,
+        },
+    )
+    log(f"saved success filter: {stepd_filter_path}")
 
     scores = []
     trials_rows = []
@@ -703,6 +854,10 @@ def main() -> int:
                 "n_trials": args.n_trials,
                 "n_icl_examples": args.n_icl_examples,
                 "seed": args.seed,
+                "successful_icl_only": args.successful_icl_only,
+                "attempts": attempts,
+                "kept": kept,
+                "kept_ratio": kept_ratio,
                 "token_idx": -1,
                 "measure": f"{args.cie_metric}[target_id]",
                 "cie_metric": args.cie_metric,
