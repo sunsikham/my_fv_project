@@ -138,6 +138,105 @@ def make_cproj_head_replacer(
     return hook_fn
 
 
+def make_out_proj_head_output_overrider(
+    layer_idx: int,
+    head_idx: int,
+    token_idx: int,
+    mode: str,
+    replace_vec,
+    model_config: dict,
+    resolved_quant: Optional[str],
+    logger=None,
+):
+    """Create a forward_hook to override out_proj output via manual matmul."""
+
+    import torch
+    import torch.nn.functional as F
+
+    _validate_model_config(model_config)
+    n_heads = int(model_config["n_heads"])
+    head_dim = int(model_config["head_dim"])
+    resid_dim = int(model_config["resid_dim"])
+
+    if mode not in ("replace", "self"):
+        raise ValueError("mode must be 'replace' or 'self'")
+    if head_idx < 0 or head_idx >= n_heads:
+        raise ValueError("head_idx out of range")
+
+    log_state = {"logged": False}
+    weight_cache = {"w": None, "b": None, "dequant_used": False}
+
+    def _get_weight_and_bias(module, dtype, device):
+        if weight_cache["w"] is not None:
+            return weight_cache["w"], weight_cache["b"]
+        w = module.weight
+        b = module.bias
+        dequant_used = False
+        if resolved_quant == "4bit" and hasattr(w, "quant_state"):
+            import bitsandbytes as bnb
+
+            w_deq = bnb.functional.dequantize_4bit(w.data, w.quant_state)
+            w_use = w_deq.to(dtype=dtype, device=device)
+            dequant_used = True
+        else:
+            w_use = w.to(dtype=dtype, device=device)
+        b_use = b.to(dtype=dtype, device=device) if b is not None else None
+        weight_cache["w"] = w_use
+        weight_cache["b"] = b_use
+        weight_cache["dequant_used"] = dequant_used
+        _log_once(
+            logger,
+            log_state,
+            "manual_matmul_override "
+            f"layer={layer_idx} head={head_idx} "
+            f"quant={resolved_quant} dequant_used={dequant_used}",
+        )
+        return w_use, b_use
+
+    def hook_fn(module, inputs, output):
+        if not inputs:
+            return output
+        x = inputs[0]
+        if x is None or not hasattr(x, "shape"):
+            return output
+        if x.dim() != 3:
+            raise ValueError("Expected input shape (B,T,resid_dim)")
+        batch_size, seq_len, hidden = x.shape
+        if hidden != resid_dim:
+            raise ValueError("Input resid_dim mismatch")
+
+        t_idx = _normalize_token_index(token_idx, seq_len)
+        if t_idx < 0 or t_idx >= seq_len:
+            raise ValueError("token_idx out of range")
+
+        x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
+        if mode == "self":
+            vec = x_heads[:, t_idx, head_idx, :]
+        else:
+            if replace_vec is None:
+                raise ValueError("replace_vec required for mode='replace'")
+            vec = _normalize_replace_vec(replace_vec, batch_size, head_dim, x)
+
+        x_heads[:, t_idx, head_idx, :] = vec
+        x_patched = x_heads.reshape(batch_size, seq_len, resid_dim)
+
+        w_use, b_use = _get_weight_and_bias(module, x_patched.dtype, x_patched.device)
+        x2d = x_patched.reshape(batch_size * seq_len, resid_dim)
+        if module.__class__.__name__ == "Conv1D":
+            y2d = x2d.matmul(w_use)
+            if b_use is not None:
+                y2d = y2d + b_use
+        else:
+            y2d = F.linear(x2d, w_use, b_use)
+        y = y2d.reshape(batch_size, seq_len, y2d.shape[-1])
+
+        if isinstance(output, tuple):
+            return (y,) + output[1:]
+        return y
+
+    return hook_fn
+
+
 def _self_test() -> None:
     """Minimal smoke test for shape handling."""
 
