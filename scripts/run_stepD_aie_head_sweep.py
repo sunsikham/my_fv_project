@@ -24,7 +24,10 @@ from fv.mean_activations import compute_mean_activations_ns
 from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
 from fv.prompting import build_prompt_qa
-from fv.slots import compute_query_predictive_slot
+from fv.slots import (
+    compute_query_predictive_slot,
+    get_target_first_token_id_from_boundary,
+)
 
 
 def make_logger(log_path: str):
@@ -90,6 +93,12 @@ def _make_demo_only_shuffle(demos, perm):
     fixed_points = sum(1 for i, j in enumerate(perm) if i == j)
     shuffled_demos = [(demos[i][0], shuffled[i]) for i in range(len(demos))]
     return shuffled_demos, outputs, shuffled, fixed_points
+
+
+def _boundary_prefix_and_answer(prefix_str: str, answer_str: str):
+    if prefix_str.endswith(" ") and not answer_str.startswith(" "):
+        return prefix_str[:-1], f" {answer_str}"
+    return prefix_str, answer_str
 
 
 def compute_trial_metrics(logits_base, logits_patch, target_id):
@@ -529,12 +538,14 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                clean_slot = compute_slot_with_fallback(
-                    clean_prefix_str,
-                    clean_full_str,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
+                    clean_prefix_str, query[1]
+                )
+                target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
@@ -546,7 +557,7 @@ def main() -> int:
                 tokenizer,
                 device,
                 clean_prefix_str,
-                clean_slot["target_id"],
+                target_id,
                 tok_add_special,
             )
             if not success:
@@ -563,19 +574,21 @@ def main() -> int:
                 corrupted_demos, query
             )
             try:
-                corrupted_slot = compute_slot_with_fallback(
-                    corrupted_prefix_str,
-                    corrupted_full_str,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
+                    corrupted_prefix_str, query[1]
+                )
+                corrupted_target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
                 log_file.close()
                 return 1
 
-            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+            if target_id != corrupted_target_id:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
@@ -587,8 +600,8 @@ def main() -> int:
                     "trial_idx": kept - 1,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
-                    "target_id": clean_slot["target_id"],
-                    "target_token": clean_slot["target_token"],
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,
@@ -634,26 +647,30 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                clean_slot = compute_slot_with_fallback(
-                    clean_prefix_str,
-                    clean_full_str,
-                    tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
+                    clean_prefix_str, query[1]
                 )
-                corrupted_slot = compute_slot_with_fallback(
-                    corrupted_prefix_str,
-                    corrupted_full_str,
+                target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
+                )
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
+                    corrupted_prefix_str, query[1]
+                )
+                corrupted_target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
+                    tokenizer,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
                 log_file.close()
                 return 1
 
-            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+            if target_id != corrupted_target_id:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
@@ -663,8 +680,8 @@ def main() -> int:
                     "trial_idx": trial_idx,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
-                    "target_id": clean_slot["target_id"],
-                    "target_token": clean_slot["target_token"],
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,

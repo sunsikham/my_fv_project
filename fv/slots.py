@@ -3,6 +3,24 @@
 from typing import Dict, List, Optional, Tuple
 
 
+def get_target_first_token_id_from_boundary(
+    prefix_str: str,
+    answer_str: str,
+    tokenizer,
+    tokenize_kwargs: Optional[Dict[str, object]] = None,
+) -> int:
+    if tokenize_kwargs is None:
+        tokenize_kwargs = {}
+    prefix_ids = tokenizer(prefix_str, **tokenize_kwargs)["input_ids"]
+    full_ids = tokenizer(prefix_str + answer_str, **tokenize_kwargs)["input_ids"]
+    s = len(prefix_ids)
+    if len(full_ids) <= s:
+        raise ValueError("Full tokenization does not extend prefix tokens")
+    if full_ids[:s] != prefix_ids:
+        raise ValueError("Prefix tokens mismatch full tokens at boundary")
+    return full_ids[s]
+
+
 def get_dummy_token_labels_and_slot_map(
     n_icl_examples: int,
     special_prefix: Optional[List[str]] = None,
@@ -75,14 +93,17 @@ def compute_query_predictive_slot(
         raise ValueError("slot_index out of range")
 
     answer = full_str[len(prefix_str) :]
-    # If the prompt ends with space (e.g. "A: "), use answer tokens without
-    # adding another leading space.
-    answer_ids = tokenizer.encode(answer, add_special_tokens=False)
-    answer_space_ids = tokenizer.encode(f" {answer}", add_special_tokens=False)
-    if prefix_str.endswith(" "):
-        target_id = answer_ids[0] if answer_ids else full_ids[s]
-    else:
-        target_id = answer_space_ids[0] if answer_space_ids else full_ids[s]
+    boundary_prefix = prefix_str
+    boundary_answer = answer
+    if boundary_prefix.endswith(" ") and not boundary_answer.startswith(" "):
+        boundary_prefix = boundary_prefix[:-1]
+        boundary_answer = f" {boundary_answer}"
+    target_id = get_target_first_token_id_from_boundary(
+        boundary_prefix,
+        boundary_answer,
+        tokenizer,
+        tokenize_kwargs={"add_special_tokens": add_special_tokens},
+    )
     target_token = tokenizer.convert_ids_to_tokens(target_id)
     full_target_id = full_ids[s]
     full_target_token = tokenizer.convert_ids_to_tokens(full_target_id)

@@ -26,7 +26,7 @@ from .prompting import (
     build_two_shot_prompt,
     build_zero_shot_prompt,
 )
-from .slots import compute_query_predictive_slot
+from .slots import compute_query_predictive_slot, get_target_first_token_id_from_boundary
 
 __all__ = [
     "ANTONYM_PAIRS",
@@ -35,6 +35,7 @@ __all__ = [
     "build_two_shot_prompt",
     "build_zero_shot_prompt",
     "compute_query_predictive_slot",
+    "get_target_first_token_id_from_boundary",
     "default_run_id",
     "extract_slot_activation",
     "get_c_proj_pre_hook",
