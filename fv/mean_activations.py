@@ -21,8 +21,8 @@ def _build_prompt_segments(
         segments.append(("STATIC_SEP", "\n\n"))
     segments.append(("STATIC_Q", "Q:"))
     segments.append(("QUERY_IN", f" {query[0]}"))
-    segments.append(("QUERY_PRED", "\nA: "))
-    segments.append(("QUERY_OUT", query[1]))
+    segments.append(("QUERY_PRED", "\nA:"))
+    segments.append(("QUERY_OUT", f" {query[1]}"))
     return segments
 
 

@@ -24,7 +24,10 @@ from fv.mean_activations import compute_mean_activations_ns
 from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
 from fv.prompting import build_prompt_qa
-from fv.slots import compute_query_predictive_slot
+from fv.slots import (
+    compute_query_predictive_slot,
+    get_target_first_token_id_from_boundary,
+)
 
 
 def make_logger(log_path: str):
@@ -90,6 +93,13 @@ def _make_demo_only_shuffle(demos, perm):
     fixed_points = sum(1 for i, j in enumerate(perm) if i == j)
     shuffled_demos = [(demos[i][0], shuffled[i]) for i in range(len(demos))]
     return shuffled_demos, outputs, shuffled, fixed_points
+
+
+def _boundary_prefix_and_answer_from_full(prefix_str: str, full_str: str):
+    answer_str = full_str[len(prefix_str) :]
+    if prefix_str.endswith(" ") and not answer_str.startswith(" "):
+        return prefix_str[:-1], f" {answer_str}"
+    return prefix_str, answer_str
 
 
 def compute_trial_metrics(logits_base, logits_patch, target_id):
@@ -529,12 +539,14 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                clean_slot = compute_slot_with_fallback(
-                    clean_prefix_str,
-                    clean_full_str,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    clean_prefix_str, clean_full_str
+                )
+                target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
@@ -546,7 +558,7 @@ def main() -> int:
                 tokenizer,
                 device,
                 clean_prefix_str,
-                clean_slot["target_id"],
+                target_id,
                 tok_add_special,
             )
             if not success:
@@ -563,19 +575,21 @@ def main() -> int:
                 corrupted_demos, query
             )
             try:
-                corrupted_slot = compute_slot_with_fallback(
-                    corrupted_prefix_str,
-                    corrupted_full_str,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    corrupted_prefix_str, corrupted_full_str
+                )
+                corrupted_target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
                 log_file.close()
                 return 1
 
-            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+            if target_id != corrupted_target_id:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
@@ -587,8 +601,8 @@ def main() -> int:
                     "trial_idx": kept - 1,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
-                    "target_id": clean_slot["target_id"],
-                    "target_token": clean_slot["target_token"],
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,
@@ -634,26 +648,30 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                clean_slot = compute_slot_with_fallback(
-                    clean_prefix_str,
-                    clean_full_str,
-                    tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    clean_prefix_str, clean_full_str
                 )
-                corrupted_slot = compute_slot_with_fallback(
-                    corrupted_prefix_str,
-                    corrupted_full_str,
+                target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
                     tokenizer,
-                    log,
-                    add_special_tokens=tok_add_special,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
+                )
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    corrupted_prefix_str, corrupted_full_str
+                )
+                corrupted_target_id = get_target_first_token_id_from_boundary(
+                    boundary_prefix,
+                    boundary_answer,
+                    tokenizer,
+                    tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
             except ValueError as exc:
                 log(str(exc))
                 log_file.close()
                 return 1
 
-            if clean_slot["target_id"] != corrupted_slot["target_id"]:
+            if target_id != corrupted_target_id:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
@@ -663,8 +681,8 @@ def main() -> int:
                     "trial_idx": trial_idx,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
-                    "target_id": clean_slot["target_id"],
-                    "target_token": clean_slot["target_token"],
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,
@@ -795,6 +813,7 @@ def main() -> int:
     total = len(pairs)
     log_every = max(1, total // 100)
     start_time = time.time()
+    patch_token_logged = False
     pbar = (
         tqdm(pairs, total=total, desc="StepD layer×head", unit="head")
         if tqdm is not None
@@ -860,6 +879,13 @@ def main() -> int:
                     f"prompt_tail={prompt_tail} "
                     f"target_token={target_token} target_id={target_id}"
                 )
+            if not patch_token_logged:
+                prefix_ids = inputs["input_ids"][0].tolist()
+                token_idx = -1
+                token_id = prefix_ids[token_idx]
+                decoded = tokenizer.decode([token_id])
+                log(f"PATCH token idx / decoded: {token_idx} {repr(decoded)}")
+                patch_token_logged = True
 
             handle = layer_modules[layer].register_forward_hook(hook)
             with torch.inference_mode():
