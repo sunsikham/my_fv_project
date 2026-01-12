@@ -95,7 +95,8 @@ def _make_demo_only_shuffle(demos, perm):
     return shuffled_demos, outputs, shuffled, fixed_points
 
 
-def _boundary_prefix_and_answer(prefix_str: str, answer_str: str):
+def _boundary_prefix_and_answer_from_full(prefix_str: str, full_str: str):
+    answer_str = full_str[len(prefix_str) :]
     if prefix_str.endswith(" ") and not answer_str.startswith(" "):
         return prefix_str[:-1], f" {answer_str}"
     return prefix_str, answer_str
@@ -538,8 +539,8 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
-                    clean_prefix_str, query[1]
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    clean_prefix_str, clean_full_str
                 )
                 target_id = get_target_first_token_id_from_boundary(
                     boundary_prefix,
@@ -574,8 +575,8 @@ def main() -> int:
                 corrupted_demos, query
             )
             try:
-                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
-                    corrupted_prefix_str, query[1]
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    corrupted_prefix_str, corrupted_full_str
                 )
                 corrupted_target_id = get_target_first_token_id_from_boundary(
                     boundary_prefix,
@@ -647,8 +648,8 @@ def main() -> int:
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
-                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
-                    clean_prefix_str, query[1]
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    clean_prefix_str, clean_full_str
                 )
                 target_id = get_target_first_token_id_from_boundary(
                     boundary_prefix,
@@ -656,8 +657,8 @@ def main() -> int:
                     tokenizer,
                     tokenize_kwargs={"add_special_tokens": tok_add_special},
                 )
-                boundary_prefix, boundary_answer = _boundary_prefix_and_answer(
-                    corrupted_prefix_str, query[1]
+                boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+                    corrupted_prefix_str, corrupted_full_str
                 )
                 corrupted_target_id = get_target_first_token_id_from_boundary(
                     boundary_prefix,
@@ -812,6 +813,7 @@ def main() -> int:
     total = len(pairs)
     log_every = max(1, total // 100)
     start_time = time.time()
+    patch_token_logged = False
     pbar = (
         tqdm(pairs, total=total, desc="StepD layer×head", unit="head")
         if tqdm is not None
@@ -877,6 +879,13 @@ def main() -> int:
                     f"prompt_tail={prompt_tail} "
                     f"target_token={target_token} target_id={target_id}"
                 )
+            if not patch_token_logged:
+                prefix_ids = inputs["input_ids"][0].tolist()
+                token_idx = -1
+                token_id = prefix_ids[token_idx]
+                decoded = tokenizer.decode([token_id])
+                log(f"PATCH token idx / decoded: {token_idx} {repr(decoded)}")
+                patch_token_logged = True
 
             handle = layer_modules[layer].register_forward_hook(hook)
             with torch.inference_mode():
