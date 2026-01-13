@@ -53,7 +53,7 @@ def compute_mean_head_vec(
     head_dim,
     resid_dim,
     head_idx,
-    token_idx,
+    seq_token_idx,
     target_module,
     tok_add_special,
 ):
@@ -71,9 +71,9 @@ def compute_mean_head_vec(
             state["errors"].append(str(exc))
             return
         seq_len = reshaped.shape[1]
-        t_idx = token_idx if token_idx >= 0 else seq_len + token_idx
+        t_idx = seq_token_idx if seq_token_idx >= 0 else seq_len + seq_token_idx
         if t_idx < 0 or t_idx >= seq_len:
-            state["errors"].append("token_idx out of range")
+            state["errors"].append("seq_token_idx out of range")
             return
         head_vec = reshaped[:, t_idx, head_idx, :]
         state["current"] = head_vec.detach().mean(dim=0)
@@ -330,7 +330,7 @@ def main() -> int:
         hook = make_cproj_head_replacer(
             layer_idx=args.layer,
             head_idx=args.head,
-            token_idx=-1,
+            seq_token_idx=-1,
             mode=hook_mode,
             replace_vec=replace_vec,
             model_config=model_cfg,

@@ -25,8 +25,16 @@ from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
 from fv.prompting import build_prompt_qa
 from fv.slots import (
+    build_prompt_segments,
     compute_query_predictive_slot,
+    compute_duplicated_labels,
+    get_dummy_token_labels_and_slot_map,
+    get_token_meta_labels,
     get_target_first_token_id_from_boundary,
+    infer_special_token_labels,
+    resolve_slot_seq_token_idx,
+    segments_to_text_and_spans,
+    validate_idx_map,
 )
 
 
@@ -165,6 +173,71 @@ def compute_slot_with_fallback(
             tokenizer,
             add_special_tokens=add_special_tokens,
         )
+
+
+def compute_trial_idx_map(
+    demos,
+    query,
+    full_str: str,
+    tokenizer,
+    tok_add_special: bool,
+    n_icl_examples: int,
+    dummy_labels_ref=None,
+    slot_index_map_ref=None,
+    special_index_labels_ref=None,
+):
+    segments = build_prompt_segments(demos, query)
+    full_str_segments, _spans = segments_to_text_and_spans(segments)
+    if full_str_segments != full_str:
+        raise ValueError("Prompt builder mismatch with SSOT")
+
+    encoded = tokenizer(
+        full_str,
+        return_offsets_mapping=True,
+        add_special_tokens=tok_add_special,
+    )
+    input_ids = encoded["input_ids"]
+    offsets = encoded["offset_mapping"]
+    special_index_labels = infer_special_token_labels(tokenizer, input_ids, offsets)
+    if (
+        special_index_labels_ref is not None
+        and special_index_labels != special_index_labels_ref
+    ):
+        raise ValueError("Special token alignment mismatch across trials")
+
+    special_positions = sorted(special_index_labels.keys())
+    special_prefix = []
+    special_suffix = []
+    if special_positions and special_positions[0] == 0:
+        special_prefix.append(special_index_labels[special_positions[0]])
+    if special_positions and special_positions[-1] == len(input_ids) - 1:
+        if special_positions[-1] != special_positions[0]:
+            special_suffix.append(special_index_labels[special_positions[-1]])
+
+    dummy_labels, slot_index_map = get_dummy_token_labels_and_slot_map(
+        n_icl_examples,
+        special_prefix=special_prefix,
+        special_suffix=special_suffix,
+    )
+    if dummy_labels_ref is not None and dummy_labels != dummy_labels_ref:
+        raise ValueError("dummy_labels mismatch across trials")
+    if slot_index_map_ref is not None and slot_index_map != slot_index_map_ref:
+        raise ValueError("slot_index_map mismatch across trials")
+
+    token_meta_labels, _input_ids, _offsets = get_token_meta_labels(
+        tokenizer,
+        full_str,
+        segments,
+        tok_add_special,
+        special_index_labels,
+    )
+    idx_map, _idx_avg = compute_duplicated_labels(
+        token_meta_labels,
+        dummy_labels,
+        allow_empty_labels=["QUERY_OUT"],
+    )
+    validate_idx_map(idx_map, len(input_ids))
+    return idx_map, dummy_labels, slot_index_map, special_index_labels, input_ids
 
 
 def check_successful_icl(
@@ -496,6 +569,9 @@ def main() -> int:
     attempts = 0
     kept = 0
     p_targets = []
+    dummy_labels_ref = None
+    slot_index_map_ref = None
+    special_index_labels_ref = None
 
     if args.shuffle_labels not in (0, 1):
         log("shuffle_labels must be 0 or 1")
@@ -594,6 +670,52 @@ def main() -> int:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
+            try:
+                (
+                    idx_map,
+                    dummy_labels,
+                    slot_index_map,
+                    special_index_labels,
+                    full_input_ids,
+                ) = compute_trial_idx_map(
+                    corrupted_demos,
+                    query,
+                    corrupted_full_str,
+                    tokenizer,
+                    tok_add_special,
+                    args.n_icl_examples,
+                    dummy_labels_ref=dummy_labels_ref,
+                    slot_index_map_ref=slot_index_map_ref,
+                    special_index_labels_ref=special_index_labels_ref,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            if dummy_labels_ref is None:
+                dummy_labels_ref = dummy_labels
+                slot_index_map_ref = slot_index_map
+                special_index_labels_ref = special_index_labels
+            slot_q = slot_index_map["QUERY_PRED"]
+            try:
+                seq_token_idx = resolve_slot_seq_token_idx(
+                    idx_map, slot_q, require_single=False
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            prefix_ids = tokenizer.encode(
+                corrupted_prefix_str, add_special_tokens=tok_add_special
+            )
+            if seq_token_idx != len(prefix_ids) - 1:
+                log(
+                    "slot alignment mismatch: "
+                    f"seq_token_idx={seq_token_idx} "
+                    f"prefix_last_idx={len(prefix_ids) - 1}"
+                )
+                log_file.close()
+                return 1
 
             kept += 1
             p_targets.append(p_target)
@@ -602,12 +724,16 @@ def main() -> int:
                     "trial_idx": kept - 1,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
+                    "corrupted_full_str": corrupted_full_str,
                     "target_id": target_id,
                     "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,
                     "demo_outputs_after": demo_outputs_after,
+                    "idx_map": idx_map,
+                    "seq_token_idx": seq_token_idx,
+                    "full_input_ids": full_input_ids,
                 }
             )
     else:
@@ -677,17 +803,68 @@ def main() -> int:
                 log_file.close()
                 return 1
 
+            try:
+                (
+                    idx_map,
+                    dummy_labels,
+                    slot_index_map,
+                    special_index_labels,
+                    full_input_ids,
+                ) = compute_trial_idx_map(
+                    corrupted_demos,
+                    query,
+                    corrupted_full_str,
+                    tokenizer,
+                    tok_add_special,
+                    args.n_icl_examples,
+                    dummy_labels_ref=dummy_labels_ref,
+                    slot_index_map_ref=slot_index_map_ref,
+                    special_index_labels_ref=special_index_labels_ref,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            if dummy_labels_ref is None:
+                dummy_labels_ref = dummy_labels
+                slot_index_map_ref = slot_index_map
+                special_index_labels_ref = special_index_labels
+            slot_q = slot_index_map["QUERY_PRED"]
+            try:
+                seq_token_idx = resolve_slot_seq_token_idx(
+                    idx_map, slot_q, require_single=False
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            prefix_ids = tokenizer.encode(
+                corrupted_prefix_str, add_special_tokens=tok_add_special
+            )
+            if seq_token_idx != len(prefix_ids) - 1:
+                log(
+                    "slot alignment mismatch: "
+                    f"seq_token_idx={seq_token_idx} "
+                    f"prefix_last_idx={len(prefix_ids) - 1}"
+                )
+                log_file.close()
+                return 1
+
             trials.append(
                 {
                     "trial_idx": trial_idx,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
+                    "corrupted_full_str": corrupted_full_str,
                     "target_id": target_id,
                     "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
                     "demo_fixed_points": demo_fixed_points,
                     "demo_outputs_before": demo_outputs_before,
                     "demo_outputs_after": demo_outputs_after,
+                    "idx_map": idx_map,
+                    "seq_token_idx": seq_token_idx,
+                    "full_input_ids": full_input_ids,
                 }
             )
 
@@ -737,12 +914,24 @@ def main() -> int:
         log_file.close()
         return 1
 
+    if dummy_labels_ref is not None and dummy_labels_ref != dummy_labels:
+        log("dummy_labels mismatch between trials and mean_activations")
+        log_file.close()
+        return 1
+    if slot_index_map_ref is not None and slot_index_map_ref != slot_index_map:
+        log("slot_index_map mismatch between trials and mean_activations")
+        log_file.close()
+        return 1
+
     slot_q = slot_index_map.get("QUERY_PRED")
     if slot_q is None:
         log("QUERY_PRED missing from slot_index_map")
         log_file.close()
         return 1
-    log(f"patch config: token_idx=-1 (last token), slot_q={slot_q} (QUERY_PRED)")
+    log(
+        "patch config: "
+        f"slot_idx={slot_q} (QUERY_PRED) -> seq_token_idx per trial"
+    )
     log(
         "mean_activations: "
         f"shape={tuple(mean_acts.shape)} n_slots={len(dummy_labels)} "
@@ -851,11 +1040,11 @@ def main() -> int:
         }
         nonzero = False
         replace_vec = mean_acts[layer, head, slot_q]
-        hook_state = {"mode": "self", "replace_vec": None}
+        hook_state = {"mode": "self", "replace_vec": None, "seq_token_idx": None}
         hook = make_out_proj_head_output_overrider(
             layer_idx=layer,
             head_idx=head,
-            token_idx=-1,
+            seq_token_idx=0,
             mode="self",
             replace_vec=None,
             model_config=model_cfg,
@@ -867,6 +1056,8 @@ def main() -> int:
         for trial in trials:
             prefix_str = trial["corrupted_prefix_str"]
             target_id = trial["target_id"]
+            seq_token_idx = trial["seq_token_idx"]
+            hook_state["seq_token_idx"] = seq_token_idx
 
             inputs = tokenizer(
                 prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
@@ -889,10 +1080,19 @@ def main() -> int:
                 )
             if not patch_token_logged:
                 prefix_ids = inputs["input_ids"][0].tolist()
-                token_idx = -1
-                token_id = prefix_ids[token_idx]
-                decoded = tokenizer.decode([token_id])
-                log(f"PATCH token idx / decoded: {token_idx} {repr(decoded)}")
+                full_ids = trial.get("full_input_ids", [])
+                decoded_full = (
+                    tokenizer.decode([full_ids[seq_token_idx]])
+                    if full_ids
+                    else None
+                )
+                decoded_prefix = tokenizer.decode([prefix_ids[seq_token_idx]])
+                log(
+                    "PATCH slot/seq idx decoded: "
+                    f"slot_idx={slot_q} seq_token_idx={seq_token_idx} "
+                    f"full_token={repr(decoded_full)} "
+                    f"prefix_token={repr(decoded_prefix)}"
+                )
                 patch_token_logged = True
 
             hook_state["mode"] = "replace"
@@ -936,8 +1136,8 @@ def main() -> int:
                 "delta_logprob": trial_metrics["delta_logprob"],
                 "prompt_tail_repr": repr(prefix_str[-30:]),
                 "prompt_ends_with_space": prefix_str.endswith(" "),
-                "token_idx": -1,
-                "slot_q": slot_q,
+                "slot_idx": slot_q,
+                "seq_token_idx": seq_token_idx,
             }
             trial_metrics_file.write(json.dumps(trial_row, ensure_ascii=True) + "\n")
 
@@ -1047,7 +1247,7 @@ def main() -> int:
                 "attempts": attempts,
                 "kept": kept,
                 "kept_ratio": kept_ratio,
-                "token_idx": -1,
+                "seq_token_idx": "per_trial",
                 "slot_query_pred": slot_q,
                 "slot_label": dummy_labels[slot_q],
                 "score_key": args.score_key,

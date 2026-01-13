@@ -332,13 +332,69 @@ def main() -> int:
     except Exception as exc:
         print(str(exc))
         return 1
+    if trials:
+        sample = trials[0]
+        prefix_str = sample["prefix_str"]
+        full_str = sample["full_str"]
+        prefix_ids = tokenizer(
+            prefix_str, add_special_tokens=tok_add_special
+        ).input_ids
+        full_ids = tokenizer(full_str, add_special_tokens=tok_add_special).input_ids
+        boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+            prefix_str, full_str
+        )
+        answer_ids = tokenizer.encode(boundary_answer, add_special_tokens=False)
+        full_boundary_id = None
+        if len(full_ids) > len(prefix_ids):
+            full_boundary_id = full_ids[len(prefix_ids)]
+        answer_first_decoded = (
+            tokenizer.decode([answer_ids[0]]) if answer_ids else None
+        )
+        full_boundary_decoded = (
+            tokenizer.decode([full_boundary_id]) if full_boundary_id is not None else None
+        )
+        easy_ids = tokenizer.encode(" easy", add_special_tokens=False)
+        no_space_ids = tokenizer.encode("easy", add_special_tokens=False)
+        print("BOS check (first trial):")
+        print(
+            "  tok_add_special="
+            f"{tok_add_special} bos_id={tokenizer.bos_token_id}"
+        )
+        print(
+            "  prefix_input_ids[0]="
+            f"{prefix_ids[0] if prefix_ids else None}"
+        )
+        print(
+            "  full_input_ids[0]="
+            f"{full_ids[0] if full_ids else None}"
+        )
+        print(
+            "  answer_only_ids="
+            f"{answer_ids} (contains_bos={tokenizer.bos_token_id in answer_ids})"
+        )
+        print(
+            "  answer_only_first_decoded="
+            f"{answer_first_decoded} full_boundary_first_decoded={full_boundary_decoded}"
+        )
+        print(
+            "  answer_first_id_matches_full="
+            f"{(answer_ids[0] if answer_ids else None) == full_boundary_id}"
+        )
+        print(
+            "  encode(\" easy\")[0]_decoded="
+            f"{tokenizer.decode([easy_ids[0]]) if easy_ids else None}"
+        )
+        print(
+            "  encode(\"easy\")[0]_decoded="
+            f"{tokenizer.decode([no_space_ids[0]]) if no_space_ids else None}"
+        )
 
     replace_vec = torch.zeros((head_dim,), dtype=torch.float32)
     hook_state = {"mode": "self", "replace_vec": replace_vec, "alpha": 1.0}
     hook_fn = make_out_proj_head_output_overrider(
         layer_idx=args.layer,
         head_idx=args.head,
-        token_idx=-1,
+        seq_token_idx=-1,
         mode="self",
         replace_vec=None,
         model_config=model_cfg,
