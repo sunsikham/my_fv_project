@@ -31,10 +31,10 @@ def _validate_model_config(model_config: dict) -> None:
         raise ValueError("model_config resid_dim must equal n_heads * head_dim")
 
 
-def _normalize_token_index(token_idx: int, seq_len: int) -> int:
-    if token_idx < 0:
-        token_idx = seq_len + token_idx
-    return token_idx
+def _normalize_seq_token_index(seq_token_idx: int, seq_len: int) -> int:
+    if seq_token_idx < 0:
+        seq_token_idx = seq_len + seq_token_idx
+    return seq_token_idx
 
 
 def _normalize_replace_vec(replace_vec, batch_size: int, head_dim: int, ref_tensor):
@@ -60,7 +60,7 @@ def _normalize_replace_vec(replace_vec, batch_size: int, head_dim: int, ref_tens
 def make_cproj_head_replacer(
     layer_idx: int,
     head_idx: int,
-    token_idx: int,
+    seq_token_idx: int,
     mode: str,
     replace_vec,
     model_config: dict,
@@ -70,14 +70,20 @@ def make_cproj_head_replacer(
 
     Signature:
         make_cproj_head_replacer(
-            layer_idx, head_idx, token_idx, mode, replace_vec, model_config, logger=None
+            layer_idx,
+            head_idx,
+            seq_token_idx,
+            mode,
+            replace_vec,
+            model_config,
+            logger=None,
         )
 
     Example:
         hook = make_cproj_head_replacer(
             layer_idx=0,
             head_idx=3,
-            token_idx=-1,
+            seq_token_idx=-1,
             mode="replace",
             replace_vec=my_vec,
             model_config=get_model_config("gpt2"),
@@ -109,9 +115,9 @@ def make_cproj_head_replacer(
         if hidden != resid_dim:
             raise ValueError("Input resid_dim mismatch")
 
-        t_idx = _normalize_token_index(token_idx, seq_len)
+        t_idx = _normalize_seq_token_index(seq_token_idx, seq_len)
         if t_idx < 0 or t_idx >= seq_len:
-            raise ValueError("token_idx out of range")
+            raise ValueError("seq_token_idx out of range")
 
         x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
         if mode == "self":
@@ -128,7 +134,8 @@ def make_cproj_head_replacer(
             logger,
             log_state,
             "hook fired "
-            f"layer={layer_idx} head={head_idx} token_idx={token_idx} mode={mode}",
+            f"layer={layer_idx} head={head_idx} "
+            f"seq_token_idx={seq_token_idx} mode={mode}",
         )
 
         if isinstance(inputs, tuple):
@@ -141,7 +148,7 @@ def make_cproj_head_replacer(
 def make_out_proj_head_output_overrider(
     layer_idx: int,
     head_idx: int,
-    token_idx: int,
+    seq_token_idx: int,
     mode: str,
     replace_vec,
     model_config: dict,
@@ -211,9 +218,14 @@ def make_out_proj_head_output_overrider(
         if hidden != resid_dim:
             raise ValueError("Input resid_dim mismatch")
 
-        t_idx = _normalize_token_index(token_idx, seq_len)
+        current_seq_idx = (
+            state.get("seq_token_idx", seq_token_idx) if state is not None else seq_token_idx
+        )
+        if current_seq_idx is None:
+            raise ValueError("seq_token_idx must be set for patching")
+        t_idx = _normalize_seq_token_index(current_seq_idx, seq_len)
         if t_idx < 0 or t_idx >= seq_len:
-            raise ValueError("token_idx out of range")
+            raise ValueError("seq_token_idx out of range")
 
         x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
         current_mode = state.get("mode")
@@ -266,7 +278,7 @@ def _self_test() -> None:
     hook = make_cproj_head_replacer(
         layer_idx=0,
         head_idx=1,
-        token_idx=-1,
+        seq_token_idx=-1,
         mode="replace",
         replace_vec=vec,
         model_config=model_cfg,

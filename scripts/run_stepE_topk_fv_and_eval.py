@@ -635,7 +635,7 @@ def main() -> int:
                 "alpha": args.alpha,
                 "n_eval_trials": args.n_eval_trials,
                 "seed": args.seed,
-                "token_idx": -1,
+                "seq_token_idx": -1,
                 "measure": "logit[target_id]",
             },
             "per_layer": per_layer_summary,
