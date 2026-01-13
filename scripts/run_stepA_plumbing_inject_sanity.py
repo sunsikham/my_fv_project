@@ -19,6 +19,7 @@ from fv.mean_acts import extract_slot_activation
 from fv.model_config import get_model_config
 from fv.prompting import build_zero_shot_prompt
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def make_logger(log_path: str):
@@ -116,6 +117,7 @@ def main() -> int:
         log_file.close()
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
@@ -186,7 +188,9 @@ def main() -> int:
         full_str = f"{prefix_str} {answer_str}"
 
         try:
-            slot_info = compute_query_predictive_slot(prefix_str, full_str, tokenizer)
+            slot_info = compute_query_predictive_slot(
+                prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+            )
         except ValueError as exc:
             log(str(exc))
             log_file.close()
@@ -244,7 +248,9 @@ def main() -> int:
             hook_state["captured"] = captured.detach()
 
         handle = target_module.register_forward_pre_hook(pre_hook)
-        inputs_full = tokenizer(full_str, return_tensors="pt", add_special_tokens=False)
+        inputs_full = tokenizer(
+            full_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs_full = {key: value.to(device) for key, value in inputs_full.items()}
         with torch.inference_mode():
             _ = model(**inputs_full)
@@ -280,7 +286,9 @@ def main() -> int:
         end = start + head_dim
         head_only_fv[start:end] = head_vector
 
-        inputs = tokenizer(prefix_str, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(
+            prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
         attention_mask = inputs.get("attention_mask")
         if attention_mask is not None:

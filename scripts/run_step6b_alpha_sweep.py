@@ -18,6 +18,7 @@ from fv.intervene import make_residual_injection_hook
 from fv.io import prepare_run_dirs, resolve_out_dir
 from fv.model_config import get_model_config
 from fv.prompting import build_zero_shot_prompt
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def get_target_token(answer: str, tokenizer) -> Tuple[int, str, bool]:
@@ -227,6 +228,7 @@ def main() -> int:
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     model.to(device)
     model.eval()
     if tokenizer.pad_token is None:
@@ -335,7 +337,12 @@ def main() -> int:
             batch_answers.append(answer)
             batch_used_ids.append(target_used)
 
-        inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True)
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            add_special_tokens=tok_add_special,
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
         attention_mask = inputs.get("attention_mask")

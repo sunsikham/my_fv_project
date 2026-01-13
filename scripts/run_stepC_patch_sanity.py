@@ -19,6 +19,7 @@ from fv.model_config import get_model_config
 from fv.patch import make_cproj_head_replacer
 from fv.prompting import ANTONYM_PAIRS
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def make_logger(log_path: str):
@@ -54,6 +55,7 @@ def compute_mean_head_vec(
     head_idx,
     token_idx,
     target_module,
+    tok_add_special,
 ):
     import torch
 
@@ -79,7 +81,9 @@ def compute_mean_head_vec(
     handle = target_module.register_forward_pre_hook(pre_hook)
     for prefix in prefixes:
         state["current"] = None
-        inputs = tokenizer(prefix, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(
+            prefix, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
         with torch.inference_mode():
             _ = model(**inputs)
@@ -189,6 +193,7 @@ def main() -> int:
         log_file.close()
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
@@ -232,10 +237,16 @@ def main() -> int:
 
         try:
             clean_slot = compute_query_predictive_slot(
-                clean_prefix_str, clean_full_str, tokenizer
+                clean_prefix_str,
+                clean_full_str,
+                tokenizer,
+                add_special_tokens=tok_add_special,
             )
             corrupted_slot = compute_query_predictive_slot(
-                corrupted_prefix_str, corrupted_full_str, tokenizer
+                corrupted_prefix_str,
+                corrupted_full_str,
+                tokenizer,
+                add_special_tokens=tok_add_special,
             )
         except ValueError as exc:
             log(str(exc))
@@ -276,6 +287,7 @@ def main() -> int:
                 args.head,
                 -1,
                 target_module,
+                tok_add_special,
             )
         except ValueError as exc:
             log(str(exc))
@@ -294,7 +306,9 @@ def main() -> int:
         target_id = item["target_id"]
         target_token = item["target_token"]
 
-        inputs = tokenizer(prefix_str, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(
+            prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
         seq_len = inputs["input_ids"].shape[1]
         last_index = seq_len - 1

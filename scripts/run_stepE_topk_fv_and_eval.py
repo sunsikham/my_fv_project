@@ -22,6 +22,7 @@ from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.model_spec import get_model_spec
 from fv.prompting import build_prompt_qa
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def make_logger(log_path: str):
@@ -112,9 +113,13 @@ def build_fv_global_resid(
     return fv_global
 
 
-def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
+def compute_slot_with_fallback(
+    prefix_str: str, full_str: str, tokenizer, log, tok_add_special: bool
+):
     try:
-        return compute_query_predictive_slot(prefix_str, full_str, tokenizer)
+        return compute_query_predictive_slot(
+            prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+        )
     except ValueError as exc:
         message = str(exc)
         if "Target id mismatch" not in message:
@@ -123,7 +128,9 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
         if trimmed_prefix == prefix_str:
             raise
         log("retrying slot computation with trimmed prefix space")
-        return compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer)
+        return compute_query_predictive_slot(
+            trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
+        )
 
 
 def main() -> int:
@@ -255,6 +262,7 @@ def main() -> int:
         log(str(exc))
         log_file.close()
         return 1
+    tok_add_special = resolve_prompt_add_special_tokens(args.model, args.model_spec)
 
     stepd_dir = resolve_out_dir(os.path.join("runs", args.run_id_stepD, "artifacts"))
     scores_path = os.path.join(stepd_dir, "aie_scores.csv")
@@ -524,10 +532,18 @@ def main() -> int:
 
         try:
             clean_slot = compute_slot_with_fallback(
-                clean_prefix_str, clean_full_str, tokenizer, log
+                clean_prefix_str,
+                clean_full_str,
+                tokenizer,
+                log,
+                tok_add_special,
             )
             corrupted_slot = compute_slot_with_fallback(
-                corrupted_prefix_str, corrupted_full_str, tokenizer, log
+                corrupted_prefix_str,
+                corrupted_full_str,
+                tokenizer,
+                log,
+                tok_add_special,
             )
         except ValueError as exc:
             log(str(exc))
@@ -555,7 +571,9 @@ def main() -> int:
         prefix_str = trial["corrupted_prefix_str"]
         target_id = trial["target_id"]
 
-        inputs = tokenizer(prefix_str, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(
+            prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
         last_index = inputs["input_ids"].shape[1] - 1
 

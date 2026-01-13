@@ -15,11 +15,14 @@ from fv.corrupt import make_corrupted_demos
 from fv.dataset_loader import load_pairs_antonym, sample_demos_and_query
 from fv.prompting import build_prompt_qa
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
-def compute_true_target(prefix_str: str, full_str: str, tokenizer) -> Dict[str, object]:
-    prefix_ids = tokenizer(prefix_str, add_special_tokens=False).input_ids
-    full_ids = tokenizer(full_str, add_special_tokens=False).input_ids
+def compute_true_target(
+    prefix_str: str, full_str: str, tokenizer, tok_add_special: bool
+) -> Dict[str, object]:
+    prefix_ids = tokenizer(prefix_str, add_special_tokens=tok_add_special).input_ids
+    full_ids = tokenizer(full_str, add_special_tokens=tok_add_special).input_ids
     s = len(prefix_ids)
     if s >= len(full_ids):
         trimmed_prefix = prefix_str.rstrip(" ")
@@ -27,7 +30,7 @@ def compute_true_target(prefix_str: str, full_str: str, tokenizer) -> Dict[str, 
             raise ValueError(
                 f"Invalid prefix length for true target (s={s}, seq_len={len(full_ids)})"
             )
-        prefix_ids = tokenizer(trimmed_prefix, add_special_tokens=False).input_ids
+        prefix_ids = tokenizer(trimmed_prefix, add_special_tokens=tok_add_special).input_ids
         s = len(prefix_ids)
         if s >= len(full_ids):
             raise ValueError(
@@ -48,11 +51,15 @@ def compute_true_target(prefix_str: str, full_str: str, tokenizer) -> Dict[str, 
     }
 
 
-def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer):
+def compute_slot_with_fallback(
+    prefix_str: str, full_str: str, tokenizer, tok_add_special: bool
+):
     mismatch = False
     fallback_used = False
     try:
-        slot = compute_query_predictive_slot(prefix_str, full_str, tokenizer)
+        slot = compute_query_predictive_slot(
+            prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+        )
         return slot, mismatch, fallback_used
     except ValueError as exc:
         message = str(exc)
@@ -62,7 +69,9 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer):
         trimmed_prefix = prefix_str.rstrip(" ")
         if trimmed_prefix == prefix_str:
             raise
-        slot = compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer)
+        slot = compute_query_predictive_slot(
+            trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
+        )
         fallback_used = True
         return slot, mismatch, fallback_used
 
@@ -105,6 +114,7 @@ def main() -> int:
         return 1
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
 
     clean_ok = 0
     clean_fail = 0
@@ -135,7 +145,9 @@ def main() -> int:
                 prefix_spacing_fail += 1
 
             try:
-                true_info = compute_true_target(prefix_str, full_str, tokenizer)
+            true_info = compute_true_target(
+                prefix_str, full_str, tokenizer, tok_add_special
+            )
             except ValueError as exc:
                 failure_examples.append(
                     {
@@ -153,9 +165,9 @@ def main() -> int:
                 continue
 
             try:
-                slot_info, mismatch, fallback = compute_slot_with_fallback(
-                    prefix_str, full_str, tokenizer
-                )
+            slot_info, mismatch, fallback = compute_slot_with_fallback(
+                prefix_str, full_str, tokenizer, tok_add_special
+            )
             except ValueError as exc:
                 failure_examples.append(
                     {
