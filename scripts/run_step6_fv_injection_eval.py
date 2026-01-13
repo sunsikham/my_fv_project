@@ -21,6 +21,7 @@ from fv.intervene import make_residual_injection_hook
 from fv.io import load_json, prepare_run_dirs, resolve_out_dir, save_step6_results
 from fv.adapters import infer_head_dims, resolve_blocks
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def summarize_prompt(prompt: str, limit: int = 80) -> str:
@@ -117,9 +118,16 @@ def check_llama_target_paths(model, spec, logger):
         logger(f"llama target: mlp.{proj_name} exists=True")
 
 
-def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
+def compute_slot_with_fallback(
+    prefix_str: str, full_str: str, tokenizer, log, tok_add_special: bool
+):
     try:
-        return compute_query_predictive_slot(prefix_str, full_str, tokenizer), False
+        return (
+            compute_query_predictive_slot(
+                prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+            ),
+            False,
+        )
     except ValueError as exc:
         message = str(exc)
         if "Target id mismatch" not in message:
@@ -128,7 +136,12 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer, log):
         if trimmed_prefix == prefix_str:
             raise
         log("retrying slot computation with trimmed prefix space")
-        return compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer), True
+        return (
+            compute_query_predictive_slot(
+                trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
+            ),
+            True,
+        )
 
 
 def compute_token_scores(logits, target_ids):
@@ -297,6 +310,7 @@ def main() -> int:
     except ValueError as exc:
         print(str(exc))
         return 1
+    tok_add_special = resolve_prompt_add_special_tokens(args.model, args.model_spec)
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -588,7 +602,7 @@ def main() -> int:
             full_str = prefix_str + y_val
             try:
                 slot_info, fallback_used = compute_slot_with_fallback(
-                    prefix_str, full_str, tokenizer, log
+                    prefix_str, full_str, tokenizer, log, tok_add_special
                 )
             except ValueError as exc:
                 print(str(exc))
@@ -617,7 +631,12 @@ def main() -> int:
             batch_used_ids.append(target_used)
             batch_used_tokens.append(target_used_token)
 
-        inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True)
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            add_special_tokens=tok_add_special,
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
         attention_mask = inputs.get("attention_mask")

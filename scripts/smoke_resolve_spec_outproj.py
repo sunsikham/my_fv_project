@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from fv.adapters import infer_head_dims, resolve_attn, resolve_blocks, resolve_out_proj
 from fv.model_spec import get_model_spec
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def parse_dtype(dtype_str: str, torch_module, device_str: str):
@@ -126,6 +127,7 @@ def main() -> int:
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model, args.model_spec)
     if args.device_map is None:
         model.to(device)
 
@@ -206,7 +208,9 @@ def main() -> int:
 
     handle = out_proj.register_forward_pre_hook(pre_hook)
     try:
-        inputs = tokenizer(args.prompt, return_tensors="pt")
+        inputs = tokenizer(
+            args.prompt, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         if args.device_map is None:
             inputs = {key: value.to(device) for key, value in inputs.items()}
         with torch.inference_mode():

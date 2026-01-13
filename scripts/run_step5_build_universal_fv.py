@@ -19,6 +19,7 @@ from fv.mean_acts import extract_slot_activation
 from fv.model_config import get_model_config
 from fv.prompting import build_two_shot_prompt
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def main() -> int:
@@ -113,6 +114,7 @@ def main() -> int:
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     model.to(device)
     model.eval()
 
@@ -200,7 +202,9 @@ def main() -> int:
 
         prefix_str, full_str, _answer = build_two_shot_prompt(rng)
         try:
-            slot_info = compute_query_predictive_slot(prefix_str, full_str, tokenizer)
+            slot_info = compute_query_predictive_slot(
+                prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+            )
         except ValueError as exc:
             print(str(exc))
             return 1
@@ -224,7 +228,7 @@ def main() -> int:
 
         hook_state["slot_index"] = slot_index
 
-        inputs = tokenizer(full_str, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(full_str, return_tensors="pt", add_special_tokens=tok_add_special)
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
         with torch.inference_mode():

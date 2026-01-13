@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.io import prepare_run_dirs
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def main() -> int:
@@ -46,6 +47,7 @@ def main() -> int:
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     random.seed(0)
     torch.manual_seed(0)
     if torch.cuda.is_available():
@@ -66,7 +68,7 @@ def main() -> int:
         print("Device: cpu")
 
     prompt = "Hello, world!"
-    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=tok_add_special)
     inputs = {key: value.to(device) for key, value in inputs.items()}
 
     with torch.inference_mode():

@@ -146,6 +146,8 @@ def make_out_proj_head_output_overrider(
     replace_vec,
     model_config: dict,
     resolved_quant: Optional[str],
+    force_recompute_outproj: bool = True,
+    state: Optional[dict] = None,
     logger=None,
 ):
     """Create a forward_hook to override out_proj output via manual matmul."""
@@ -158,8 +160,10 @@ def make_out_proj_head_output_overrider(
     head_dim = int(model_config["head_dim"])
     resid_dim = int(model_config["resid_dim"])
 
-    if mode not in ("replace", "self"):
-        raise ValueError("mode must be 'replace' or 'self'")
+    if state is None:
+        if mode not in ("replace", "self"):
+            raise ValueError("mode must be 'replace' or 'self'")
+        state = {"mode": mode, "replace_vec": replace_vec}
     if head_idx < 0 or head_idx >= n_heads:
         raise ValueError("head_idx out of range")
 
@@ -194,6 +198,8 @@ def make_out_proj_head_output_overrider(
         return w_use, b_use
 
     def hook_fn(module, inputs, output):
+        if not force_recompute_outproj:
+            return output
         if not inputs:
             return output
         x = inputs[0]
@@ -210,12 +216,24 @@ def make_out_proj_head_output_overrider(
             raise ValueError("token_idx out of range")
 
         x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
-        if mode == "self":
-            vec = x_heads[:, t_idx, head_idx, :]
-        else:
-            if replace_vec is None:
+        current_mode = state.get("mode")
+        current_replace = state.get("replace_vec")
+        base_vec = x_heads[:, t_idx, head_idx, :]
+        if current_mode == "self":
+            vec = base_vec
+        elif current_mode == "replace":
+            if current_replace is None:
                 raise ValueError("replace_vec required for mode='replace'")
-            vec = _normalize_replace_vec(replace_vec, batch_size, head_dim, x)
+            alpha = float(state.get("alpha", 1.0))
+            repl_vec = _normalize_replace_vec(current_replace, batch_size, head_dim, x)
+            if alpha == 1.0:
+                vec = repl_vec
+            elif alpha == 0.0:
+                vec = base_vec
+            else:
+                vec = base_vec * (1.0 - alpha) + repl_vec * alpha
+        else:
+            raise ValueError("mode must be 'replace' or 'self'")
 
         x_heads[:, t_idx, head_idx, :] = vec
         x_patched = x_heads.reshape(batch_size, seq_len, resid_dim)

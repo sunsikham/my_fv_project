@@ -348,6 +348,7 @@ def main() -> int:
         log_file.close()
         return 1
     tok_add_special = bool(spec.prepend_bos)
+    baseline_recompute_outproj = True
     log(f"tok_add_special: {tok_add_special}")
 
     random.seed(args.seed)
@@ -850,14 +851,17 @@ def main() -> int:
         }
         nonzero = False
         replace_vec = mean_acts[layer, head, slot_q]
+        hook_state = {"mode": "self", "replace_vec": None}
         hook = make_out_proj_head_output_overrider(
             layer_idx=layer,
             head_idx=head,
             token_idx=-1,
-            mode="replace",
-            replace_vec=replace_vec,
+            mode="self",
+            replace_vec=None,
             model_config=model_cfg,
             resolved_quant=resolved_quant,
+            force_recompute_outproj=baseline_recompute_outproj,
+            state=hook_state,
             logger=log,
         )
         for trial in trials:
@@ -868,8 +872,12 @@ def main() -> int:
                 prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
             )
             inputs = {key: value.to(device) for key, value in inputs.items()}
+            hook_state["mode"] = "self"
+            hook_state["replace_vec"] = None
+            handle_base = layer_modules[layer].register_forward_hook(hook)
             with torch.inference_mode():
                 outputs = model(**inputs)
+            handle_base.remove()
             baseline_logits = outputs.logits[0, -1]
             if idx_pair == 1 and trial["trial_idx"] == 0:
                 target_token = tokenizer.convert_ids_to_tokens(target_id)
@@ -887,6 +895,8 @@ def main() -> int:
                 log(f"PATCH token idx / decoded: {token_idx} {repr(decoded)}")
                 patch_token_logged = True
 
+            hook_state["mode"] = "replace"
+            hook_state["replace_vec"] = replace_vec
             handle = layer_modules[layer].register_forward_hook(hook)
             with torch.inference_mode():
                 outputs_patched = model(**inputs)

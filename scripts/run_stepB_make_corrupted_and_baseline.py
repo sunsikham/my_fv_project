@@ -16,6 +16,7 @@ from fv.corrupt import make_corrupted_demos
 from fv.io import prepare_run_dirs, resolve_out_dir, save_json
 from fv.prompting import ANTONYM_PAIRS
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
 def make_logger(log_path: str):
@@ -134,6 +135,7 @@ def main() -> int:
         log_file.close()
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.eos_token_id
@@ -175,10 +177,16 @@ def main() -> int:
 
         try:
             clean_slot = compute_query_predictive_slot(
-                clean_prefix_str, clean_full_str, tokenizer
+                clean_prefix_str,
+                clean_full_str,
+                tokenizer,
+                add_special_tokens=tok_add_special,
             )
             corrupted_slot = compute_query_predictive_slot(
-                corrupted_prefix_str, corrupted_full_str, tokenizer
+                corrupted_prefix_str,
+                corrupted_full_str,
+                tokenizer,
+                add_special_tokens=tok_add_special,
             )
         except ValueError as exc:
             log(str(exc))
@@ -199,7 +207,9 @@ def main() -> int:
         answer_str = query[1]
 
         def score_prefix(prefix_str: str):
-            inputs = tokenizer(prefix_str, return_tensors="pt", add_special_tokens=False)
+            inputs = tokenizer(
+                prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+            )
             inputs = {key: value.to(device) for key, value in inputs.items()}
             attention_mask = inputs.get("attention_mask")
             if attention_mask is None:

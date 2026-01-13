@@ -12,11 +12,19 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from fv.dataset_loader import load_pairs_antonym
 from fv.slots import compute_query_predictive_slot
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 
-def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer):
+def compute_slot_with_fallback(
+    prefix_str: str, full_str: str, tokenizer, tok_add_special: bool
+):
     try:
-        return compute_query_predictive_slot(prefix_str, full_str, tokenizer), False
+        return (
+            compute_query_predictive_slot(
+                prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
+            ),
+            False,
+        )
     except ValueError as exc:
         message = str(exc)
         if "Target id mismatch" not in message:
@@ -24,7 +32,9 @@ def compute_slot_with_fallback(prefix_str: str, full_str: str, tokenizer):
         trimmed_prefix = prefix_str.rstrip(" ")
         if trimmed_prefix == prefix_str:
             raise
-        slot = compute_query_predictive_slot(trimmed_prefix, full_str, tokenizer)
+        slot = compute_query_predictive_slot(
+            trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
+        )
         return slot, True
 
 
@@ -61,9 +71,10 @@ def main() -> int:
         return 1
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     try:
         slot_info, fallback_used = compute_slot_with_fallback(
-            prefix_str, full_str, tokenizer
+            prefix_str, full_str, tokenizer, tok_add_special
         )
     except ValueError as exc:
         print(str(exc))

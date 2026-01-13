@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.io import prepare_run_dirs, resolve_out_dir
+from fv.tokenization import resolve_prompt_add_special_tokens
 
 DUMMY_ROWS = [
     {"id": "r01", "ex_A": "red", "ex_B": "color"},
@@ -136,6 +137,7 @@ def main() -> int:
         print(f"Failed to load model '{args.model}': {exc}")
         return 1
 
+    tok_add_special = resolve_prompt_add_special_tokens(args.model)
     model.to(device)
     model.eval()
     if tokenizer.pad_token is None:
@@ -153,8 +155,8 @@ def main() -> int:
         demos, query = provider.sample_demo_and_query(args.k_shot, rng)
         prefix_str, full_str = build_prompt(demos, query)
 
-        prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=False)
-        full_ids = tokenizer.encode(full_str, add_special_tokens=False)
+        prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=tok_add_special)
+        full_ids = tokenizer.encode(full_str, add_special_tokens=tok_add_special)
 
         s = len(prefix_ids)
         if s == 0 or s >= len(full_ids):
@@ -165,7 +167,9 @@ def main() -> int:
         target_token = tokenizer.convert_ids_to_tokens(target_id)
         logits_index = s - 1
 
-        inputs = tokenizer(full_str, return_tensors="pt", add_special_tokens=False)
+        inputs = tokenizer(
+            full_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
         with torch.inference_mode():
