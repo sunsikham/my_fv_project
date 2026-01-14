@@ -40,6 +40,7 @@ from src.utils.prompt_utils import (
     get_token_meta_labels as paper_get_token_meta_labels,
     word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data,
 )
+from fv.relation_trials import generate_relation_trials, save_trials_json
 
 
 def make_logger(log_path: str):
@@ -112,6 +113,42 @@ def mean_abs(values):
     return sum(abs(value) for value in values) / len(values)
 
 
+DEFAULT_PREFIXES = {"input": "Q:", "output": "A:", "instructions": ""}
+DEFAULT_SEPARATORS = {"input": "\n", "output": "\n\n", "instructions": ""}
+
+
+def _strip_leading_space(text):
+    return text[1:] if isinstance(text, str) and text.startswith(" ") else text
+
+
+def _normalize_demos(demos):
+    if demos and isinstance(demos[0], dict):
+        return [
+            (_strip_leading_space(d["input"]), _strip_leading_space(d["output"]))
+            for d in demos
+        ]
+    return [(_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos]
+
+
+def _normalize_query(query):
+    if isinstance(query, dict):
+        return (_strip_leading_space(query["input"]), _strip_leading_space(query["output"]))
+    return (_strip_leading_space(query[0]), _strip_leading_space(query[1]))
+
+
+def _resolve_prompt_meta(fixed_meta, tok_add_special: bool):
+    prefixes = (fixed_meta or {}).get("prefixes") or DEFAULT_PREFIXES
+    separators = (fixed_meta or {}).get("separators") or DEFAULT_SEPARATORS
+    prepend_bos_token_used = (fixed_meta or {}).get("prepend_bos_token_used")
+    if prepend_bos_token_used is None:
+        prepend_bos_token_used = False if tok_add_special else True
+    return {
+        "prefixes": prefixes,
+        "separators": separators,
+        "prepend_bos_token_used": bool(prepend_bos_token_used),
+    }
+
+
 def run_stepd_debug(
     *,
     model,
@@ -128,6 +165,7 @@ def run_stepd_debug(
     n_icl_examples: int,
     n_trials: int,
     model_spec: str,
+    prompt_meta: dict,
     log,
 ) -> None:
     import torch
@@ -190,7 +228,16 @@ def run_stepd_debug(
         demos, query = sample_demos_and_query(
             pairs, n_icl_examples, seed=seed + trial_idx
         )
-        prefix_str, full_str = build_prompt_qa(demos, query)
+        demos_norm = _normalize_demos(demos)
+        query_norm = _normalize_query(query)
+        prefix_str, full_str = build_prompt_qa(
+            demos_norm,
+            query_norm,
+            prefixes=prompt_meta["prefixes"],
+            separators=prompt_meta["separators"],
+            prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+            prepend_space=True,
+        )
         boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
             prefix_str, full_str
         )
@@ -473,6 +520,35 @@ def compute_trial_idx_map(
     ):
         raise ValueError("Special token alignment mismatch across trials")
 
+    slot_q = slot_index_map.get("QUERY_PRED")
+    if slot_q is not None and not idx_map.get(slot_q):
+        fallback_idx = None
+        try:
+            encoded = tokenizer(
+                full_str,
+                return_offsets_mapping=True,
+                add_special_tokens=tok_add_special,
+            )
+            offsets = encoded.get("offset_mapping") or []
+            prefix_end = len(prefix_str)
+            for idx, (start, end) in enumerate(offsets):
+                if start == end:
+                    continue
+                if end <= prefix_end:
+                    fallback_idx = idx
+                else:
+                    break
+        except Exception:
+            fallback_idx = None
+        if fallback_idx is None:
+            prefix_ids = tokenizer(
+                prefix_str, return_tensors=None, add_special_tokens=tok_add_special
+            )["input_ids"]
+            if not prefix_ids:
+                raise ValueError("Empty prefix tokenization for QUERY_PRED fallback")
+            fallback_idx = len(prefix_ids) - 1
+        idx_map[slot_q] = [fallback_idx]
+
     full_ids = tokenizer(
         full_str, return_tensors=None, add_special_tokens=tok_add_special
     )["input_ids"]
@@ -578,6 +654,39 @@ def main() -> int:
         help="Optional fixed_trials.json path for deterministic trials",
     )
     parser.add_argument(
+        "--relation_csv_path",
+        default=None,
+        help="Relation CSV path (optional; uses relation trial generator)",
+    )
+    parser.add_argument(
+        "--relation_q_list",
+        default=None,
+        help="Comma-separated q list for relation trials (default: all)",
+    )
+    parser.add_argument(
+        "--relation_n_trials_per_q",
+        type=int,
+        default=None,
+        help="Trials per q for relation CSV (required if relation_csv_path set)",
+    )
+    parser.add_argument(
+        "--relation_n_demos",
+        type=int,
+        default=10,
+        help="Demos per trial for relation CSV (default: 10)",
+    )
+    parser.add_argument(
+        "--relation_save_trials_json",
+        type=int,
+        default=0,
+        help="Save relation trials to JSON (default: 0)",
+    )
+    parser.add_argument(
+        "--relation_out_path",
+        default=None,
+        help="Output path for relation trials JSON (required if save enabled)",
+    )
+    parser.add_argument(
         "--mean_only",
         type=int,
         default=0,
@@ -661,6 +770,9 @@ def main() -> int:
         args.device_map = None
         args.layers = "0"
         args.heads = "0"
+        if args.relation_csv_path:
+            print("debug_stepd cannot be used with relation_csv_path")
+            return 1
 
     if args.n_trials < 1 and not args.debug_stepd:
         print("n_trials must be >= 1")
@@ -678,6 +790,12 @@ def main() -> int:
         return 1
     if args.max_trial_attempts is None:
         args.max_trial_attempts = args.n_trials * 50
+    if args.fixed_trials_path and args.relation_csv_path:
+        print("Use either --fixed_trials_path or --relation_csv_path, not both.")
+        return 1
+    if args.relation_csv_path and not args.relation_n_trials_per_q:
+        print("--relation_n_trials_per_q is required with --relation_csv_path.")
+        return 1
 
     run_info = prepare_run_dirs(args.run_id)
     if args.out_dir:
@@ -707,6 +825,12 @@ def main() -> int:
     log(f"score_key: {args.score_key}")
     log(f"shuffle_labels: {args.shuffle_labels}")
     log(f"fixed_trials_path: {args.fixed_trials_path}")
+    log(f"relation_csv_path: {args.relation_csv_path}")
+    log(f"relation_q_list: {args.relation_q_list}")
+    log(f"relation_n_trials_per_q: {args.relation_n_trials_per_q}")
+    log(f"relation_n_demos: {args.relation_n_demos}")
+    log(f"relation_save_trials_json: {args.relation_save_trials_json}")
+    log(f"relation_out_path: {args.relation_out_path}")
     log(f"mean_only: {args.mean_only}")
     log(f"debug_prompt_check: {args.debug_prompt_check}")
     log(f"debug_n: {args.debug_n}")
@@ -749,6 +873,7 @@ def main() -> int:
         args.successful_icl_only = 0
 
     fixed_trials = None
+    fixed_meta = None
     if args.fixed_trials_path:
         try:
             fixed_trials = load_fixed_trials(args.fixed_trials_path)
@@ -805,7 +930,7 @@ def main() -> int:
         log("no fixed_trials: unchanged")
 
     pairs = None
-    if fixed_trials is None:
+    if fixed_trials is None and not args.relation_csv_path:
         try:
             pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
         except Exception as exc:
@@ -855,6 +980,100 @@ def main() -> int:
         "patched run uses manual_matmul_override "
         f"(resolved_quant={resolved_quant})"
     )
+
+    relation_stats = None
+    if args.relation_csv_path:
+        try:
+            fixed_trials, relation_stats = generate_relation_trials(
+                csv_path=args.relation_csv_path,
+                q_list=args.relation_q_list,
+                n_trials_per_q=int(args.relation_n_trials_per_q),
+                n_demos=int(args.relation_n_demos),
+                seed=int(args.seed),
+                tokenizer=tokenizer,
+                tok_add_special=tok_add_special,
+            )
+        except Exception as exc:
+            log(f"Failed to generate relation trials: {exc}")
+            log_file.close()
+            return 1
+        fixed_meta = fixed_trials.get("meta", {})
+        trials_list = fixed_trials.get("trials", [])
+        if not trials_list:
+            log("relation trials empty")
+            log_file.close()
+            return 1
+        if args.relation_save_trials_json:
+            if not args.relation_out_path:
+                log("relation_out_path required when relation_save_trials_json=1")
+                log_file.close()
+                return 1
+            save_trials_json(fixed_trials, args.relation_out_path)
+            log(f"saved relation trials: {args.relation_out_path}")
+        if args.n_trials != len(trials_list):
+            log(
+                "relation trials override n_trials: "
+                f"{args.n_trials} -> {len(trials_list)}"
+            )
+            args.n_trials = len(trials_list)
+        rel_demos = fixed_meta.get("n_demos")
+        if rel_demos is not None and rel_demos != args.n_icl_examples:
+            log(
+                "relation trials override n_icl_examples: "
+                f"{args.n_icl_examples} -> {rel_demos}"
+            )
+            args.n_icl_examples = int(rel_demos)
+        if args.n_mean_trials is None:
+            args.n_mean_trials = args.n_trials
+        if args.n_mean_trials > args.n_trials:
+            log(
+                "n_mean_trials exceeds n_trials; overriding "
+                f"{args.n_mean_trials} -> {args.n_trials}"
+            )
+            args.n_mean_trials = args.n_trials
+        if args.successful_icl_only:
+            log("relation trials provided; forcing successful_icl_only=0")
+        args.successful_icl_only = 0
+        if args.shuffle_labels:
+            log("relation trials provided; forcing shuffle_labels=0")
+        args.shuffle_labels = 0
+        if relation_stats:
+            log("relation_trials: per-q counts")
+            for q_id in sorted(relation_stats.q_counts.keys()):
+                if q_id in relation_stats.skipped_qs:
+                    log(
+                        f"  q={q_id} skipped n_examples={relation_stats.q_counts[q_id]}"
+                    )
+                    continue
+                overlaps = relation_stats.shuffle_match_counts.get(q_id, [])
+                if overlaps:
+                    overlap_msg = (
+                        f"overlap_mean={sum(overlaps)/len(overlaps):.2f} "
+                        f"min={min(overlaps)} max={max(overlaps)}"
+                    )
+                else:
+                    overlap_msg = "overlap=n/a"
+                log(
+                    "  q={} n_examples={} n_demos={} n_trials={} {}".format(
+                        q_id,
+                        relation_stats.q_counts[q_id],
+                        relation_stats.q_demo_counts[q_id],
+                        relation_stats.q_trials[q_id],
+                        overlap_msg,
+                    )
+                )
+
+    prompt_meta = _resolve_prompt_meta(fixed_meta if fixed_trials else None, tok_add_special)
+    log(
+        "prompt_meta: "
+        f"prefixes={prompt_meta['prefixes']} "
+        f"separators={prompt_meta['separators']} "
+        f"prepend_bos_token_used={prompt_meta['prepend_bos_token_used']}"
+    )
+
+    if fixed_trials is None and args.successful_icl_only:
+        log("non-fixed run: forcing successful_icl_only=0")
+        args.successful_icl_only = 0
 
     try:
         dims = infer_head_dims(model, spec_name=args.model_spec)
@@ -943,6 +1162,7 @@ def main() -> int:
             n_icl_examples=args.n_icl_examples,
             n_trials=args.n_trials,
             model_spec=args.model_spec,
+            prompt_meta=prompt_meta,
             log=log,
         )
         log_file.close()
@@ -981,26 +1201,6 @@ def main() -> int:
                 )
                 log_file.close()
                 return 1
-            def _strip_leading_space(text):
-                return text[1:] if isinstance(text, str) and text.startswith(" ") else text
-
-            def _normalize_demos(demos):
-                if demos and isinstance(demos[0], dict):
-                    return [
-                        (_strip_leading_space(d["input"]), _strip_leading_space(d["output"]))
-                        for d in demos
-                    ]
-                return [
-                    (_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos
-                ]
-
-            def _normalize_query(q):
-                if isinstance(q, dict):
-                    return (
-                        _strip_leading_space(q["input"]),
-                        _strip_leading_space(q["output"]),
-                    )
-                return (_strip_leading_space(q[0]), _strip_leading_space(q[1]))
 
             demos_clean_norm = _normalize_demos(demos_clean)
             demos_corrupted_norm = _normalize_demos(demos_corrupted)
@@ -1015,17 +1215,17 @@ def main() -> int:
             clean_prefix_str, _clean_full_str = build_prompt_qa(
                 demos_clean_norm,
                 query_norm,
-                prefixes=fixed_meta.get("prefixes"),
-                separators=fixed_meta.get("separators"),
-                prepend_bos_token=bool(fixed_meta.get("prepend_bos_token_used")),
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
                 prepend_space=True,
             )
             corrupted_prefix_str, _tmp_full_str = build_prompt_qa(
                 demos_corrupted_norm,
                 query_norm,
-                prefixes=fixed_meta.get("prefixes"),
-                separators=fixed_meta.get("separators"),
-                prepend_bos_token=bool(fixed_meta.get("prepend_bos_token_used")),
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
                 prepend_space=True,
             )
             if fixed_clean != clean_prefix_str:
@@ -1225,12 +1425,21 @@ def main() -> int:
                     log(f"demo_shuffle fixed_points={demo_fixed_points}")
             else:
                 demos = demos_orig
-            clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
+            demos_norm = _normalize_demos(demos)
+            query_norm = _normalize_query(query)
+            clean_prefix_str, clean_full_str = build_prompt_qa(
+                demos_norm,
+                query_norm,
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prepend_space=True,
+            )
 
             if attempts == 1:
                 log(f"n_pairs_loaded: {len(pairs)}")
                 log(f"n_icl_examples: {args.n_icl_examples}")
-                log(f"example query: input='{query[0]}' output='{query[1]}'")
+                log(f"example query: input='{query_norm[0]}' output='{query_norm[1]}'")
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
@@ -1266,8 +1475,14 @@ def main() -> int:
                 corrupted_demos, _, _, _ = _make_demo_only_shuffle(
                     corrupted_demos, demo_perm
                 )
+            corrupted_demos_norm = _normalize_demos(corrupted_demos)
             corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
-                corrupted_demos, query
+                corrupted_demos_norm,
+                query_norm,
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prepend_space=True,
             )
             try:
                 boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
@@ -1288,6 +1503,18 @@ def main() -> int:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
+            prompt_data_corrupted = paper_word_pairs_to_prompt_data(
+                {
+                    "input": [x for x, _y in corrupted_demos_norm],
+                    "output": [y for _x, y in corrupted_demos_norm],
+                },
+                query_target_pair={"input": [query_norm[0]], "output": [query_norm[1]]},
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                shuffle_labels=False,
+                prepend_space=True,
+            )
             try:
                 (
                     idx_map,
@@ -1296,8 +1523,8 @@ def main() -> int:
                     special_index_labels,
                     full_input_ids,
                 ) = compute_trial_idx_map(
-                    corrupted_demos,
-                    query,
+                    corrupted_demos_norm,
+                    query_norm,
                     corrupted_prefix_str,
                     corrupted_full_str,
                     tokenizer,
@@ -1306,6 +1533,7 @@ def main() -> int:
                     dummy_labels_ref=dummy_labels_ref,
                     slot_index_map_ref=slot_index_map_ref,
                     special_index_labels_ref=special_index_labels_ref,
+                    prompt_data=prompt_data_corrupted,
                 )
             except ValueError as exc:
                 log(str(exc))
@@ -1328,13 +1556,51 @@ def main() -> int:
                 corrupted_prefix_str, add_special_tokens=tok_add_special
             )
             if seq_token_idx != len(prefix_ids) - 1:
+                bos_token = tokenizer.bos_token or tokenizer.eos_token
+                if bos_token and corrupted_prefix_str.startswith(bos_token):
+                    log(
+                        "slot alignment mismatch with BOS prefix; "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={len(prefix_ids) - 1} "
+                        "-> using prefix_last_idx"
+                    )
+                    seq_token_idx = len(prefix_ids) - 1
+                else:
+                    log(
+                        "slot alignment mismatch: "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={len(prefix_ids) - 1}"
+                    )
+                    log_file.close()
+                    return 1
+            decoded_pred_token = tokenizer.decode([full_input_ids[seq_token_idx]])
+            if decoded_pred_token != ":":
                 log(
-                    "slot alignment mismatch: "
-                    f"seq_token_idx={seq_token_idx} "
-                    f"prefix_last_idx={len(prefix_ids) - 1}"
+                    "QUERY_PRED token mismatch: "
+                    f"decoded={repr(decoded_pred_token)}"
                 )
                 log_file.close()
                 return 1
+            expected_ids = tokenizer(
+                f" {query_norm[1]}", add_special_tokens=False
+            )["input_ids"]
+            expected_first = expected_ids[0] if expected_ids else None
+            if expected_first is None or target_id != expected_first:
+                log(
+                    "target_id mismatch: "
+                    f"target_id={target_id} "
+                    f"expected_id={expected_first} "
+                    f"expected_token={repr(tokenizer.decode([expected_first])) if expected_first is not None else None}"
+                )
+                log_file.close()
+                return 1
+            log(
+                "[target_debug] "
+                f"trial={kept} "
+                f"target_id={target_id} "
+                f"token={repr(tokenizer.decode([target_id]))} "
+                f"prompt_tail={repr(corrupted_prefix_str[-30:])}"
+            )
 
             kept += 1
             p_targets.append(p_target)
@@ -1375,7 +1641,16 @@ def main() -> int:
                     log(f"demo_shuffle fixed_points={demo_fixed_points}")
             else:
                 demos = demos_orig
-            clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
+            demos_norm = _normalize_demos(demos)
+            query_norm = _normalize_query(query)
+            clean_prefix_str, clean_full_str = build_prompt_qa(
+                demos_norm,
+                query_norm,
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prepend_space=True,
+            )
             corrupted_demos = make_corrupted_demos(
                 demos_orig, random.Random(args.seed + trial_idx), ensure_derangement=True
             )
@@ -1383,14 +1658,20 @@ def main() -> int:
                 corrupted_demos, _, _, _ = _make_demo_only_shuffle(
                     corrupted_demos, demo_perm
                 )
+            corrupted_demos_norm = _normalize_demos(corrupted_demos)
             corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
-                corrupted_demos, query
+                corrupted_demos_norm,
+                query_norm,
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prepend_space=True,
             )
 
             if trial_idx == 0:
                 log(f"n_pairs_loaded: {len(pairs)}")
                 log(f"n_icl_examples: {args.n_icl_examples}")
-                log(f"example query: input='{query[0]}' output='{query[1]}'")
+                log(f"example query: input='{query_norm[0]}' output='{query_norm[1]}'")
                 log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
 
             try:
@@ -1422,6 +1703,18 @@ def main() -> int:
                 log_file.close()
                 return 1
 
+            prompt_data_corrupted = paper_word_pairs_to_prompt_data(
+                {
+                    "input": [x for x, _y in corrupted_demos_norm],
+                    "output": [y for _x, y in corrupted_demos_norm],
+                },
+                query_target_pair={"input": [query_norm[0]], "output": [query_norm[1]]},
+                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
+                shuffle_labels=False,
+                prepend_space=True,
+            )
             try:
                 (
                     idx_map,
@@ -1430,8 +1723,8 @@ def main() -> int:
                     special_index_labels,
                     full_input_ids,
                 ) = compute_trial_idx_map(
-                    corrupted_demos,
-                    query,
+                    corrupted_demos_norm,
+                    query_norm,
                     corrupted_prefix_str,
                     corrupted_full_str,
                     tokenizer,
@@ -1440,6 +1733,7 @@ def main() -> int:
                     dummy_labels_ref=dummy_labels_ref,
                     slot_index_map_ref=slot_index_map_ref,
                     special_index_labels_ref=special_index_labels_ref,
+                    prompt_data=prompt_data_corrupted,
                 )
             except ValueError as exc:
                 log(str(exc))
@@ -1462,13 +1756,51 @@ def main() -> int:
                 corrupted_prefix_str, add_special_tokens=tok_add_special
             )
             if seq_token_idx != len(prefix_ids) - 1:
+                bos_token = tokenizer.bos_token or tokenizer.eos_token
+                if bos_token and corrupted_prefix_str.startswith(bos_token):
+                    log(
+                        "slot alignment mismatch with BOS prefix; "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={len(prefix_ids) - 1} "
+                        "-> using prefix_last_idx"
+                    )
+                    seq_token_idx = len(prefix_ids) - 1
+                else:
+                    log(
+                        "slot alignment mismatch: "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={len(prefix_ids) - 1}"
+                    )
+                    log_file.close()
+                    return 1
+            decoded_pred_token = tokenizer.decode([full_input_ids[seq_token_idx]])
+            if decoded_pred_token != ":":
                 log(
-                    "slot alignment mismatch: "
-                    f"seq_token_idx={seq_token_idx} "
-                    f"prefix_last_idx={len(prefix_ids) - 1}"
+                    "QUERY_PRED token mismatch: "
+                    f"decoded={repr(decoded_pred_token)}"
                 )
                 log_file.close()
                 return 1
+            expected_ids = tokenizer(
+                f" {query_norm[1]}", add_special_tokens=False
+            )["input_ids"]
+            expected_first = expected_ids[0] if expected_ids else None
+            if expected_first is None or target_id != expected_first:
+                log(
+                    "target_id mismatch: "
+                    f"target_id={target_id} "
+                    f"expected_id={expected_first} "
+                    f"expected_token={repr(tokenizer.decode([expected_first])) if expected_first is not None else None}"
+                )
+                log_file.close()
+                return 1
+            log(
+                "[target_debug] "
+                f"trial={trial_idx} "
+                f"target_id={target_id} "
+                f"token={repr(tokenizer.decode([target_id]))} "
+                f"prompt_tail={repr(corrupted_prefix_str[-30:])}"
+            )
 
             trials.append(
                 {
@@ -1542,6 +1874,8 @@ def main() -> int:
                 tok_add_special=tok_add_special,
                 device=device,
                 shuffle_labels=bool(args.shuffle_labels),
+                prefixes=prompt_meta["prefixes"],
+                separators=prompt_meta["separators"],
                 logger=log,
             )
     except ValueError as exc:

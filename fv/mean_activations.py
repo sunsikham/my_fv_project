@@ -59,6 +59,26 @@ def apply_paper_idx_map_to_activations(acts, idx_map, idx_avg):
     return slot_acts
 
 
+def apply_paper_idx_map_to_slots(acts, idx_map, n_slots):
+    # Build slot activations directly using idx_map token->slot mapping.
+    import torch
+
+    slot_acts = torch.zeros(
+        (acts.shape[0], acts.shape[1], n_slots, acts.shape[3]),
+        device=acts.device,
+        dtype=acts.dtype,
+    )
+    slot_to_tokens: Dict[int, List[int]] = {i: [] for i in range(n_slots)}
+    for token_idx, slot_idx in idx_map.items():
+        if 0 <= slot_idx < n_slots:
+            slot_to_tokens[slot_idx].append(token_idx)
+    for slot_idx, token_indices in slot_to_tokens.items():
+        if not token_indices:
+            continue
+        slot_acts[:, :, slot_idx, :] = acts[:, :, token_indices, :].mean(dim=2)
+    return slot_acts
+
+
 def paper_prompt_data_from_pairs(
     demos,
     query,
@@ -122,6 +142,8 @@ def compute_mean_activations_ns(
     tok_add_special: bool,
     device,
     shuffle_labels: bool = False,
+    prefixes=None,
+    separators=None,
     allow_alignment_skip: bool = False,
     logger=None,
 ):
@@ -166,6 +188,11 @@ def compute_mean_activations_ns(
         demos_orig, query = sample_demos_and_query(
             pairs, n_icl_examples, seed=demo_seed_base + trial_idx
         )
+        def _strip_leading_space(text: str) -> str:
+            return text[1:] if isinstance(text, str) and text.startswith(" ") else text
+
+        demos_orig = [(_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos_orig]
+        query = (_strip_leading_space(query[0]), _strip_leading_space(query[1]))
         if shuffle_labels:
             import random
 
@@ -181,6 +208,8 @@ def compute_mean_activations_ns(
             demos,
             query,
             tok_add_special=tok_add_special,
+            prefixes=prefixes,
+            separators=separators,
             shuffle_labels=shuffle_labels,
         )
         prompt_string, dummy_labels_raw, idx_map, idx_avg = paper_labels_and_maps(
@@ -255,8 +284,8 @@ def compute_mean_activations_ns(
             x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
             layer_acts.append(x_heads.squeeze(0))
 
-        acts = torch.stack(layer_acts, dim=0)
-        slot_acts = apply_paper_idx_map_to_activations(acts, idx_map, idx_avg)
+        acts = torch.stack(layer_acts, dim=0).permute(0, 2, 1, 3)
+        slot_acts = apply_paper_idx_map_to_slots(acts, idx_map, len(dummy_labels_raw))
         slot_acts_cpu = slot_acts.to(dtype=torch.float32, device="cpu")
 
         mean_layers = mean[layers]
@@ -399,8 +428,8 @@ def compute_mean_activations_fixed_trials_ns(
             x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
             layer_acts.append(x_heads.squeeze(0))
 
-        acts = torch.stack(layer_acts, dim=0)
-        slot_acts = apply_paper_idx_map_to_activations(acts, idx_map, idx_avg)
+        acts = torch.stack(layer_acts, dim=0).permute(0, 2, 1, 3)
+        slot_acts = apply_paper_idx_map_to_slots(acts, idx_map, len(dummy_labels_raw))
         slot_acts_cpu = slot_acts.to(dtype=torch.float32, device="cpu")
 
         mean_layers = mean[layers]
