@@ -90,7 +90,6 @@ def compute_mean_activations_ns(
     avg_logged = False
     align_logged = False
     check_limit = 5
-    skipped = 0
 
     mean = torch.zeros(
         (n_layers, n_heads, 0, head_dim),
@@ -275,6 +274,262 @@ def compute_mean_activations_ns(
 
     if skipped:
         log(f"alignment_skipped_trials={skipped}")
+    if count == 0:
+        raise ValueError("No trials counted for mean_activations")
+
+    return mean, dummy_labels, slot_index_map
+
+
+def compute_mean_activations_fixed_trials_ns(
+    *,
+    model,
+    tokenizer,
+    layer_modules: Dict[int, object],
+    fixed_trials,
+    n_use,
+    model_cfg: Dict[str, int],
+    tok_add_special: bool,
+    device,
+    logger=None,
+):
+    import torch
+
+    trials = fixed_trials.get("trials", fixed_trials)
+    if not trials:
+        raise ValueError("No trials provided for fixed_trials mean activations")
+
+    n_use = len(trials) if n_use is None else min(int(n_use), len(trials))
+    if n_use < 1:
+        raise ValueError("n_use must be >= 1")
+
+    n_heads = int(model_cfg["n_heads"])
+    head_dim = int(model_cfg["head_dim"])
+    resid_dim = int(model_cfg["resid_dim"])
+    n_layers = int(model_cfg["n_layers"])
+
+    layers = sorted(layer_modules.keys())
+    if not layers:
+        raise ValueError("No layers provided for mean activation computation")
+
+    def log(message: str) -> None:
+        if logger is None:
+            return
+        if callable(logger):
+            logger(message)
+        elif hasattr(logger, "info"):
+            logger.info(message)
+
+    dummy_labels = None
+    slot_index_map = None
+    special_index_labels_ref = None
+    avg_logged = False
+    align_logged = False
+    check_limit = 5
+    skipped = 0
+
+    mean = torch.zeros(
+        (n_layers, n_heads, 0, head_dim),
+        dtype=torch.float32,
+        device="cpu",
+    )
+    count = 0
+
+    for trial_idx, trial in enumerate(trials[:n_use]):
+        demos = trial.get("demos_clean")
+        query = trial.get("query")
+        if demos is None or query is None:
+            raise ValueError(
+                "fixed_trials missing demos_clean/query; "
+                "regenerate fixed_trials with demos/query fields"
+            )
+        def _strip_leading_space(text):
+            return text[1:] if isinstance(text, str) and text.startswith(" ") else text
+
+        if demos and isinstance(demos[0], dict):
+            demos = [
+                (_strip_leading_space(d["input"]), _strip_leading_space(d["output"]))
+                for d in demos
+            ]
+        else:
+            demos = [(_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos]
+        if isinstance(query, dict):
+            query = (
+                _strip_leading_space(query["input"]),
+                _strip_leading_space(query["output"]),
+            )
+        else:
+            query = (_strip_leading_space(query[0]), _strip_leading_space(query[1]))
+        prefix_str, _full_str = build_prompt_qa(
+            demos,
+            query,
+            prefixes=fixed_trials.get("meta", {}).get("prefixes"),
+            separators=fixed_trials.get("meta", {}).get("separators"),
+            prepend_bos_token=bool(fixed_trials.get("meta", {}).get("prepend_bos_token_used")),
+            prepend_space=True,
+        )
+        fixed_prefix = trial.get("clean_prompt_str")
+        target_str = trial.get("target_str")
+        if fixed_prefix is None or target_str is None:
+            raise ValueError("fixed_trials missing clean_prompt_str/target_str")
+        if fixed_prefix != prefix_str:
+            raise ValueError("fixed_trials clean prompt mismatch with SSOT")
+        prefix_str = fixed_prefix
+        full_str = f"{prefix_str}{target_str}"
+
+        segments = build_prompt_segments(demos, query)
+        full_str_segments, _spans = segments_to_text_and_spans(segments)
+        if full_str_segments != full_str:
+            bos = tokenizer.bos_token or tokenizer.eos_token
+            if bos and full_str.startswith(bos) and full_str[len(bos) :] == full_str_segments:
+                segments = [("SPECIAL_BOS", bos)] + list(segments)
+                full_str_segments, _spans = segments_to_text_and_spans(segments)
+            else:
+                raise ValueError("Prompt builder mismatch with SSOT")
+        if full_str_segments != full_str:
+            raise ValueError("Prompt builder mismatch with SSOT")
+
+        encoded = tokenizer(
+            full_str,
+            return_offsets_mapping=True,
+            add_special_tokens=tok_add_special,
+        )
+        input_ids = encoded["input_ids"]
+        offsets = encoded["offset_mapping"]
+        if trial_idx < check_limit:
+            ids_check = tokenizer(
+                full_str,
+                add_special_tokens=tok_add_special,
+            )["input_ids"]
+            if input_ids != ids_check:
+                raise ValueError("Tokenizer output mismatch for prompt")
+
+        special_index_labels = infer_special_token_labels(
+            tokenizer, input_ids, offsets
+        )
+        special_positions = sorted(special_index_labels.keys())
+        if special_positions:
+            if special_positions[0] != 0:
+                raise ValueError("Special token in unexpected position")
+            if special_positions[-1] != len(input_ids) - 1 and len(special_positions) > 1:
+                raise ValueError("Special token not in prefix/suffix position")
+
+        if dummy_labels is None:
+            special_prefix = []
+            special_suffix = []
+            if special_positions and special_positions[0] == 0:
+                special_prefix.append(special_index_labels[special_positions[0]])
+            if special_positions and special_positions[-1] == len(input_ids) - 1:
+                if special_positions[-1] != special_positions[0]:
+                    special_suffix.append(special_index_labels[special_positions[-1]])
+            dummy_labels, slot_index_map = get_dummy_token_labels_and_slot_map(
+                len(demos),
+                special_prefix=special_prefix,
+                special_suffix=special_suffix,
+            )
+            mean = torch.zeros(
+                (n_layers, n_heads, len(dummy_labels), head_dim),
+                dtype=torch.float32,
+                device="cpu",
+            )
+            special_index_labels_ref = special_index_labels
+        else:
+            if special_index_labels != special_index_labels_ref:
+                raise ValueError("Special token alignment mismatch across trials")
+
+        token_meta_labels, _input_ids, _offsets = get_token_meta_labels(
+            tokenizer,
+            full_str,
+            segments,
+            tok_add_special,
+            special_index_labels,
+        )
+        idx_map, idx_avg = compute_duplicated_labels(
+            token_meta_labels,
+            dummy_labels,
+            allow_empty_labels=["QUERY_OUT"],
+        )
+        validate_idx_map(idx_map, len(input_ids))
+        if len(idx_map) != len(dummy_labels):
+            raise ValueError("idx_map missing slots")
+        if sorted(idx_map.keys()) != list(range(len(dummy_labels))):
+            raise ValueError("idx_map keys are not contiguous")
+        if idx_avg and not avg_logged:
+            log("multi-token slot detected; applying mean over span")
+            avg_logged = True
+        for slot_idx, token_indices in idx_map.items():
+            if dummy_labels[slot_idx] == "QUERY_OUT":
+                continue
+            if not token_indices:
+                raise ValueError("Empty token span for slot")
+
+        prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=tok_add_special)
+        if not prefix_ids:
+            raise ValueError("Prefix tokenization failed")
+        prefix_last_idx = len(prefix_ids) - 1
+        slot_q = slot_index_map["QUERY_PRED"]
+        if prefix_last_idx not in idx_map.get(slot_q, []):
+            raise ValueError("QUERY_PRED does not align with last token")
+        if not align_logged:
+            log(
+                "QUERY_PRED aligns with last token: True "
+                f"(last_idx={prefix_last_idx} span={idx_map.get(slot_q, [])})"
+            )
+            align_logged = True
+
+        hook_state: Dict[int, torch.Tensor] = {}
+        errors: List[str] = []
+
+        def make_pre_hook(layer_idx: int):
+            def pre_hook(_module, inputs):
+                tensor = inputs[0] if inputs else None
+                if tensor is None:
+                    errors.append("Missing out_proj input")
+                    return
+                hook_state[layer_idx] = tensor.detach()
+
+            return pre_hook
+
+        handles = []
+        for layer_idx, module in layer_modules.items():
+            handles.append(module.register_forward_pre_hook(make_pre_hook(layer_idx)))
+
+        inputs = tokenizer(
+            full_str,
+            return_tensors="pt",
+            add_special_tokens=tok_add_special,
+        )
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+
+        with torch.inference_mode():
+            _ = model(**inputs)
+
+        for handle in handles:
+            handle.remove()
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        layer_acts: List[torch.Tensor] = []
+        for layer_idx in layers:
+            if layer_idx not in hook_state:
+                raise ValueError("Missing activation for layer")
+            x = hook_state[layer_idx]
+            if x.dim() != 3 or x.shape[-1] != resid_dim:
+                raise ValueError("Activation shape mismatch")
+            batch_size, seq_len, _hidden = x.shape
+            if batch_size != 1:
+                raise ValueError("Expected batch size 1 during mean computation")
+            x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
+            layer_acts.append(x_heads.squeeze(0))
+
+        acts = torch.stack(layer_acts, dim=0)
+        slot_acts = apply_idx_map_to_activations(acts, idx_map, len(dummy_labels))
+        slot_acts_cpu = slot_acts.to(dtype=torch.float32, device="cpu")
+
+        mean_layers = mean[layers]
+        mean[layers] = mean_layers + (slot_acts_cpu - mean_layers) / (count + 1)
+        count += 1
+
     if count == 0:
         raise ValueError("No trials counted for mean_activations")
 

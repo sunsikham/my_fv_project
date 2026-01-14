@@ -18,3 +18,13 @@ runs/**
 *.log
 .hf_cache/
 **/.hf_cache/
+
+# HF cache
+_hf_cache/
+**/_hf_cache/
+.cache/
+**/.cache/
+*.bin
+*.pt
+*.pth
+*.safetensors

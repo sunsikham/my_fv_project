@@ -34,7 +34,8 @@ def build_prompt_segments(
         segments.append(("STATIC_SEP", "\n\n"))
     segments.append(("STATIC_Q", "Q:"))
     segments.append(("QUERY_IN", f" {query[0]}"))
-    segments.append(("QUERY_PRED", "\nA:"))
+    segments.append(("STATIC_A", "\nA"))
+    segments.append(("QUERY_PRED", ":"))
     segments.append(("QUERY_OUT", f" {query[1]}"))
     return segments
 
@@ -191,7 +192,9 @@ def get_dummy_token_labels_and_slot_map(
     slot_index_map["QUERY_IN"] = len(dummy_labels)
     dummy_labels.append("QUERY_IN")
 
-    # QUERY_PRED aligns with the last input token (end of "A: " prefix).
+    dummy_labels.append("STATIC_A")
+
+    # QUERY_PRED aligns with the ":" token after "A".
     slot_index_map["QUERY_PRED"] = len(dummy_labels)
     dummy_labels.append("QUERY_PRED")
 
