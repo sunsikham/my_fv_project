@@ -46,31 +46,31 @@
     ],
     [
       11,
-      "structural_token"
-    ],
-    [
-      12,
       "demonstration_2_token"
     ],
     [
-      13,
+      12,
       "separator_token"
     ],
     [
-      14,
+      13,
       "structural_token"
     ],
     [
-      15,
+      14,
       "predictive_token"
     ],
     [
-      16,
+      15,
       "demonstration_2_label_token"
     ],
     [
-      17,
+      16,
       "end_of_example_token"
+    ],
+    [
+      17,
+      "structural_token"
     ],
     [
       18,
@@ -78,43 +78,43 @@
     ],
     [
       19,
-      "structural_token"
-    ],
-    [
-      20,
-      "structural_token"
-    ],
-    [
-      21,
       "demonstration_3_token"
     ],
     [
-      22,
+      20,
       "separator_token"
     ],
     [
-      23,
+      21,
       "structural_token"
     ],
     [
-      24,
+      22,
       "predictive_token"
     ],
     [
-      25,
+      23,
       "demonstration_3_label_token"
     ],
     [
-      26,
+      24,
       "end_of_example_token"
     ],
     [
-      27,
+      25,
       "structural_token"
     ],
     [
-      28,
+      26,
       "structural_token"
+    ],
+    [
+      27,
+      "demonstration_4_token"
+    ],
+    [
+      28,
+      "separator_token"
     ],
     [
       29,
@@ -122,31 +122,31 @@
     ],
     [
       30,
-      "demonstration_4_token"
-    ],
-    [
-      31,
-      "separator_token"
-    ],
-    [
-      32,
-      "structural_token"
-    ],
-    [
-      33,
       "predictive_token"
     ],
     [
-      34,
+      31,
       "demonstration_4_label_token"
     ],
     [
-      35,
+      32,
       "end_of_example_token"
     ],
     [
-      36,
+      33,
       "structural_token"
+    ],
+    [
+      34,
+      "structural_token"
+    ],
+    [
+      35,
+      "demonstration_5_token"
+    ],
+    [
+      36,
+      "separator_token"
     ],
     [
       37,
@@ -154,15 +154,15 @@
     ],
     [
       38,
-      "structural_token"
+      "predictive_token"
     ],
     [
       39,
-      "demonstration_5_token"
+      "demonstration_5_label_token"
     ],
     [
       40,
-      "separator_token"
+      "end_of_example_token"
     ],
     [
       41,
@@ -170,15 +170,15 @@
     ],
     [
       42,
-      "predictive_token"
+      "structural_token"
     ],
     [
       43,
-      "demonstration_5_label_token"
+      "demonstration_6_token"
     ],
     [
       44,
-      "end_of_example_token"
+      "separator_token"
     ],
     [
       45,
@@ -186,19 +186,19 @@
     ],
     [
       46,
-      "structural_token"
+      "predictive_token"
     ],
     [
       47,
-      "structural_token"
+      "demonstration_6_label_token"
     ],
     [
       48,
-      "demonstration_6_token"
+      "end_of_example_token"
     ],
     [
       49,
-      "separator_token"
+      "structural_token"
     ],
     [
       50,
@@ -206,59 +206,59 @@
     ],
     [
       51,
-      "predictive_token"
-    ],
-    [
-      52,
-      "demonstration_6_label_token"
-    ],
-    [
-      53,
-      "end_of_example_token"
-    ],
-    [
-      54,
-      "structural_token"
-    ],
-    [
-      55,
-      "structural_token"
-    ],
-    [
-      56,
-      "structural_token"
-    ],
-    [
-      57,
       "demonstration_7_token"
     ],
     [
-      58,
+      52,
       "separator_token"
     ],
     [
-      59,
+      53,
       "structural_token"
     ],
     [
-      60,
+      54,
       "predictive_token"
     ],
     [
-      61,
+      55,
       "demonstration_7_label_token"
     ],
     [
-      62,
+      56,
       "end_of_example_token"
     ],
     [
-      63,
+      57,
       "structural_token"
     ],
     [
-      64,
+      58,
       "structural_token"
+    ],
+    [
+      59,
+      "demonstration_8_token"
+    ],
+    [
+      60,
+      "separator_token"
+    ],
+    [
+      61,
+      "structural_token"
+    ],
+    [
+      62,
+      "predictive_token"
+    ],
+    [
+      63,
+      "demonstration_8_label_token"
+    ],
+    [
+      64,
+      "end_of_example_token"
     ],
     [
       65,
@@ -266,31 +266,31 @@
     ],
     [
       66,
-      "demonstration_8_token"
+      "structural_token"
     ],
     [
       67,
-      "separator_token"
+      "demonstration_9_token"
     ],
     [
       68,
-      "structural_token"
+      "separator_token"
     ],
     [
       69,
-      "predictive_token"
+      "structural_token"
     ],
     [
       70,
-      "demonstration_8_label_token"
+      "predictive_token"
     ],
     [
       71,
-      "end_of_example_token"
+      "demonstration_9_label_token"
     ],
     [
       72,
-      "structural_token"
+      "end_of_example_token"
     ],
     [
       73,
@@ -302,7 +302,7 @@
     ],
     [
       75,
-      "demonstration_9_token"
+      "demonstration_10_token"
     ],
     [
       76,
@@ -318,7 +318,7 @@
     ],
     [
       79,
-      "demonstration_9_label_token"
+      "demonstration_10_label_token"
     ],
     [
       80,
@@ -326,66 +326,26 @@
     ],
     [
       81,
-      "structural_token"
+      "query_structural_token"
     ],
     [
       82,
-      "structural_token"
+      "query_structural_token"
     ],
     [
       83,
-      "structural_token"
-    ],
-    [
-      84,
-      "demonstration_10_token"
-    ],
-    [
-      85,
-      "separator_token"
-    ],
-    [
-      86,
-      "structural_token"
-    ],
-    [
-      87,
-      "predictive_token"
-    ],
-    [
-      88,
-      "demonstration_10_label_token"
-    ],
-    [
-      89,
-      "end_of_example_token"
-    ],
-    [
-      90,
-      "query_structural_token"
-    ],
-    [
-      91,
-      "query_structural_token"
-    ],
-    [
-      92,
-      "query_structural_token"
-    ],
-    [
-      93,
       "query_demonstration_token"
     ],
     [
-      94,
+      84,
       "query_separator_token"
     ],
     [
-      95,
+      85,
       "query_structural_token"
     ],
     [
-      96,
+      86,
       "query_predictive_token"
     ]
   ]

@@ -29,6 +29,8 @@ def activation_replacement_per_class_intervention(
     last_token_only=True,
     token_id_of_interest=None,
     dump_cfg=None,
+    layer_filter=None,
+    head_filter=None,
 ):
     """
     Experiment to determine top intervention locations through avg activation replacement. 
@@ -92,11 +94,23 @@ def activation_replacement_per_class_intervention(
     clean_logprobs = torch.log_softmax(clean_logits, dim=-1)
     dump_target_id = int(token_id_of_interest[0])
 
+    layers = range(model_config['n_layers'])
+    if layer_filter is not None:
+        if layer_filter < 0 or layer_filter >= model_config['n_layers']:
+            raise ValueError("layer_filter out of range")
+        layers = [layer_filter]
+
+    heads = range(model_config['n_heads'])
+    if head_filter is not None:
+        if head_filter < 0 or head_filter >= model_config['n_heads']:
+            raise ValueError("head_filter out of range")
+        heads = [head_filter]
+
     # For every layer, head, token combination perform the replacement & track the change in meaningful tokens
-    for layer in range(model_config['n_layers']):
+    for layer in layers:
         head_hook_layer = [model_config['attn_hook_names'][layer]]
         
-        for head_n in range(model_config['n_heads']):
+        for head_n in heads:
             for i,(token_class, class_regex) in enumerate(zip(token_classes, token_classes_regex)):
                 reg_class_match = re.compile(f"^{class_regex}$")
                 class_token_inds = [x[0] for x in token_labels if reg_class_match.match(x[2])]
@@ -194,6 +208,8 @@ def compute_indirect_effect(
     filter_set=None,
     fixed_trials=None,
     dump_cfg=None,
+    layer_filter=None,
+    head_filter=None,
 ):
     """
     Computes Indirect Effect of each head in the model
@@ -257,7 +273,9 @@ def compute_indirect_effect(
                                                                         dummy_labels=dummy_gt_labels, 
                                                                         model=model, model_config=model_config, tokenizer=tokenizer, 
                                                                         last_token_only=last_token_only,
-                                                                        dump_cfg=dump_cfg)
+                                                                        dump_cfg=dump_cfg,
+                                                                        layer_filter=layer_filter,
+                                                                        head_filter=head_filter)
             indirect_effect[i] = ind_effects.squeeze()
     else:
         n_trials_to_use = min(n_trials, len(trials_list))
@@ -276,6 +294,8 @@ def compute_indirect_effect(
                 last_token_only=last_token_only,
                 token_id_of_interest=target_first_token_id,
                 dump_cfg=dump_cfg,
+                layer_filter=layer_filter,
+                head_filter=head_filter,
             )
             indirect_effect[i] = ind_effects.squeeze()
 
@@ -306,6 +326,8 @@ if __name__ == "__main__":
     parser.add_argument('--dump_include_prompt', help='Include prompt tail repr in dump (1/0)', type=int, required=False, default=1)
     parser.add_argument('--dump_layer', help='Filter dump to a layer (dump only)', type=int, required=False, default=None)
     parser.add_argument('--dump_head', help='Filter dump to a head (dump only)', type=int, required=False, default=None)
+    parser.add_argument('--layer', help='Compute indirect effect for a single layer', type=int, required=False, default=None)
+    parser.add_argument('--head', help='Compute indirect effect for a single head', type=int, required=False, default=None)
     parser.add_argument('--debug_prompt_check', help='Print fixed_trials prompt/token debug and exit', type=int, required=False, default=0)
     parser.add_argument('--debug_n', help='Number of fixed_trials to print in debug check', type=int, required=False, default=3)
         
@@ -330,6 +352,8 @@ if __name__ == "__main__":
     dump_include_prompt = args.dump_include_prompt
     dump_layer = args.dump_layer
     dump_head = args.dump_head
+    layer_filter = args.layer
+    head_filter = args.head
     debug_prompt_check = args.debug_prompt_check
     debug_n = args.debug_n
 
@@ -491,9 +515,22 @@ if __name__ == "__main__":
         }
 
     print("Computing Indirect Effect")
-    indirect_effect = compute_indirect_effect(dataset, mean_activations, model=model, model_config=model_config, tokenizer=tokenizer, 
-                                              n_shots=n_shots, n_trials=n_trials, last_token_only=last_token_only, prefixes=prefixes, separators=separators,
-                                              fixed_trials=fixed_trials, dump_cfg=dump_cfg)
+    indirect_effect = compute_indirect_effect(
+        dataset,
+        mean_activations,
+        model=model,
+        model_config=model_config,
+        tokenizer=tokenizer,
+        n_shots=n_shots,
+        n_trials=n_trials,
+        last_token_only=last_token_only,
+        prefixes=prefixes,
+        separators=separators,
+        fixed_trials=fixed_trials,
+        dump_cfg=dump_cfg,
+        layer_filter=layer_filter,
+        head_filter=head_filter,
+    )
     if dump_handle is not None:
         dump_handle.close()
 

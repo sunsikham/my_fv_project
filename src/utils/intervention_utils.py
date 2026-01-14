@@ -79,9 +79,11 @@ def replace_activation_w_avg(layer_head_token_pairs, avg_activations, model, mod
                 new_output = torch.addmm(out_proj_bias, inputs.squeeze(), out_proj.T)
             
             elif 'llama' in model_config['name_or_path']:
-                if '70b' in model_config['name_or_path']:
-                    # need to dequantize weights
-                    out_proj_dequant = bnb.functional.dequantize_4bit(out_proj.data, out_proj.quant_state)
+                if hasattr(out_proj, "quant_state"):
+                    # 4bit Linear (bnb) weights need dequantization before matmul.
+                    out_proj_dequant = bnb.functional.dequantize_4bit(
+                        out_proj.data, out_proj.quant_state
+                    )
                     new_output = torch.matmul(inputs, out_proj_dequant.T)
                 else:
                     new_output = torch.matmul(inputs, out_proj.T)
