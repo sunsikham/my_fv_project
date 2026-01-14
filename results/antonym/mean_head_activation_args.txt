@@ -1,23 +1,23 @@
 {
   "dataset_name": "antonym",
-  "model_name": "gpt2",
+  "model_name": "meta-llama/Llama-3.1-8B",
   "root_data_dir": "../dataset_files",
   "save_path_root": "results/antonym",
-  "seed": 0,
+  "seed": 42,
   "n_shots": "10",
   "n_trials": "10",
   "test_split": 0.3,
-  "device": "cpu",
+  "device": "cuda",
   "prefixes": {
     "input": "Q:",
     "output": "A:",
     "instructions": ""
   },
   "separators": {
-    "input": "\n",
-    "output": "\n\n",
+    "input": "\\n",
+    "output": "\\n\\n",
     "instructions": ""
   },
   "revision": null,
-  "fixed_trials_path": "datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_WITH_DEMOS_STEPD.json"
+  "fixed_trials_path": "datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_WITH_DEMOS_STEPD_LLAMA.json"
 }

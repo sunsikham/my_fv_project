@@ -29,16 +29,16 @@ from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
 from fv.prompting import build_prompt_qa
 from fv.slots import (
-    build_prompt_segments,
     compute_query_predictive_slot,
-    compute_duplicated_labels,
-    get_dummy_token_labels_and_slot_map,
-    get_token_meta_labels,
-    get_target_first_token_id_from_boundary,
-    infer_special_token_labels,
     resolve_slot_seq_token_idx,
-    segments_to_text_and_spans,
-    validate_idx_map,
+    get_target_first_token_id_from_boundary,
+)
+from fv.mean_activations import paper_labels_to_slot_map
+from src.utils.prompt_utils import (
+    compute_duplicated_labels as paper_compute_duplicated_labels,
+    get_dummy_token_labels as paper_get_dummy_token_labels,
+    get_token_meta_labels as paper_get_token_meta_labels,
+    word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data,
 )
 
 
@@ -51,6 +51,19 @@ def make_logger(log_path: str):
         log_file.flush()
 
     return log, log_file
+
+
+def _json_safe(obj):
+    try:
+        import numpy as np
+    except Exception:
+        np = None
+    if np is not None:
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
 def parse_layers(value: str):
@@ -401,6 +414,7 @@ def compute_slot_with_fallback(
 def compute_trial_idx_map(
     demos,
     query,
+    prefix_str: str,
     full_str: str,
     tokenizer,
     tok_add_special: bool,
@@ -408,66 +422,61 @@ def compute_trial_idx_map(
     dummy_labels_ref=None,
     slot_index_map_ref=None,
     special_index_labels_ref=None,
+    prompt_data=None,
 ):
-    segments = build_prompt_segments(demos, query)
-    full_str_segments, _spans = segments_to_text_and_spans(segments)
-    if full_str_segments != full_str:
-        bos = tokenizer.bos_token or tokenizer.eos_token
-        if bos and full_str.startswith(bos) and full_str[len(bos) :] == full_str_segments:
-            segments = [("SPECIAL_BOS", bos)] + list(segments)
-            full_str_segments, _spans = segments_to_text_and_spans(segments)
-        else:
-            raise ValueError("Prompt builder mismatch with SSOT")
-    if full_str_segments != full_str:
-        raise ValueError("Prompt builder mismatch with SSOT")
+    if prompt_data is None:
+        word_pairs = {"input": [x for x, _y in demos], "output": [y for _x, y in demos]}
+        query_target_pair = {"input": [query[0]], "output": [query[1]]}
+        prompt_data = paper_word_pairs_to_prompt_data(
+            word_pairs,
+            query_target_pair=query_target_pair,
+            prepend_bos_token=not tok_add_special,
+            shuffle_labels=False,
+        )
 
-    encoded = tokenizer(
-        full_str,
-        return_offsets_mapping=True,
-        add_special_tokens=tok_add_special,
+    token_labels, prompt_string = paper_get_token_meta_labels(
+        prompt_data, tokenizer, prepend_bos=tok_add_special
     )
-    input_ids = encoded["input_ids"]
-    offsets = encoded["offset_mapping"]
-    special_index_labels = infer_special_token_labels(tokenizer, input_ids, offsets)
+    if prompt_string != prefix_str:
+        raise ValueError("Prompt builder mismatch with paper prompt_string")
+
+    dummy_labels_raw = paper_get_dummy_token_labels(
+        n_icl_examples,
+        tokenizer=tokenizer,
+        model_config={"prepend_bos": tok_add_special},
+        prefixes=prompt_data.get("prefixes"),
+        separators=prompt_data.get("separators"),
+    )
+    dummy_labels, slot_index_map = paper_labels_to_slot_map(dummy_labels_raw)
+    if dummy_labels_ref is not None and dummy_labels != dummy_labels_ref:
+        raise ValueError("dummy_labels mismatch across trials")
+    if slot_index_map_ref is not None and slot_index_map != slot_index_map_ref:
+        raise ValueError("slot_index_map mismatch across trials")
+
+    idx_map_paper, idx_avg = paper_compute_duplicated_labels(token_labels, dummy_labels_raw)
+
+    idx_map = {}
+    for token_idx, slot_idx in idx_map_paper.items():
+        idx_map.setdefault(slot_idx, []).append(token_idx)
+    for (i, j) in idx_avg.values():
+        slot_idx = idx_map_paper.get(i)
+        if slot_idx is None:
+            continue
+        idx_map[slot_idx] = list(range(i, j + 1))
+    for slot_idx in range(len(dummy_labels)):
+        idx_map.setdefault(slot_idx, [])
+
+    special_index_labels = {}
     if (
         special_index_labels_ref is not None
         and special_index_labels != special_index_labels_ref
     ):
         raise ValueError("Special token alignment mismatch across trials")
 
-    special_positions = sorted(special_index_labels.keys())
-    special_prefix = []
-    special_suffix = []
-    if special_positions and special_positions[0] == 0:
-        special_prefix.append(special_index_labels[special_positions[0]])
-    if special_positions and special_positions[-1] == len(input_ids) - 1:
-        if special_positions[-1] != special_positions[0]:
-            special_suffix.append(special_index_labels[special_positions[-1]])
-
-    dummy_labels, slot_index_map = get_dummy_token_labels_and_slot_map(
-        n_icl_examples,
-        special_prefix=special_prefix,
-        special_suffix=special_suffix,
-    )
-    if dummy_labels_ref is not None and dummy_labels != dummy_labels_ref:
-        raise ValueError("dummy_labels mismatch across trials")
-    if slot_index_map_ref is not None and slot_index_map != slot_index_map_ref:
-        raise ValueError("slot_index_map mismatch across trials")
-
-    token_meta_labels, _input_ids, _offsets = get_token_meta_labels(
-        tokenizer,
-        full_str,
-        segments,
-        tok_add_special,
-        special_index_labels,
-    )
-    idx_map, _idx_avg = compute_duplicated_labels(
-        token_meta_labels,
-        dummy_labels,
-        allow_empty_labels=["QUERY_OUT"],
-    )
-    validate_idx_map(idx_map, len(input_ids))
-    return idx_map, dummy_labels, slot_index_map, special_index_labels, input_ids
+    full_ids = tokenizer(
+        full_str, return_tensors=None, add_special_tokens=tok_add_special
+    )["input_ids"]
+    return idx_map, dummy_labels, slot_index_map, special_index_labels, full_ids
 
 
 def check_successful_icl(
@@ -1052,6 +1061,7 @@ def main() -> int:
                 ) = compute_trial_idx_map(
                     demos_corrupted_norm,
                     query_norm,
+                    corrupted_prefix_str,
                     corrupted_full_str,
                     tokenizer,
                     tok_add_special,
@@ -1059,6 +1069,7 @@ def main() -> int:
                     dummy_labels_ref=dummy_labels_ref,
                     slot_index_map_ref=slot_index_map_ref,
                     special_index_labels_ref=special_index_labels_ref,
+                    prompt_data=trial.get("prompt_data_corrupted"),
                 )
             except ValueError as exc:
                 log(str(exc))
@@ -1287,6 +1298,7 @@ def main() -> int:
                 ) = compute_trial_idx_map(
                     corrupted_demos,
                     query,
+                    corrupted_prefix_str,
                     corrupted_full_str,
                     tokenizer,
                     tok_add_special,
@@ -1420,6 +1432,7 @@ def main() -> int:
                 ) = compute_trial_idx_map(
                     corrupted_demos,
                     query,
+                    corrupted_prefix_str,
                     corrupted_full_str,
                     tokenizer,
                     tok_add_special,
@@ -1536,14 +1549,15 @@ def main() -> int:
         log_file.close()
         return 1
 
-    if dummy_labels_ref is not None and dummy_labels_ref != dummy_labels:
-        log("dummy_labels mismatch between trials and mean_activations")
-        log_file.close()
-        return 1
-    if slot_index_map_ref is not None and slot_index_map_ref != slot_index_map:
-        log("slot_index_map mismatch between trials and mean_activations")
-        log_file.close()
-        return 1
+    if not args.mean_only:
+        if dummy_labels_ref is not None and dummy_labels_ref != dummy_labels:
+            log("dummy_labels mismatch between trials and mean_activations")
+            log_file.close()
+            return 1
+        if slot_index_map_ref is not None and slot_index_map_ref != slot_index_map:
+            log("slot_index_map mismatch between trials and mean_activations")
+            log_file.close()
+            return 1
 
     slot_q = slot_index_map.get("QUERY_PRED")
     if slot_q is None:
@@ -1796,7 +1810,9 @@ def main() -> int:
                 "slot_idx": slot_q,
                 "seq_token_idx": seq_token_idx,
             }
-            trial_metrics_file.write(json.dumps(trial_row, ensure_ascii=True) + "\n")
+            trial_metrics_file.write(
+                json.dumps(trial_row, ensure_ascii=True, default=_json_safe) + "\n"
+            )
 
             if dump_handle is not None:
                 if (args.dump_layer is None or args.dump_layer == layer) and (
@@ -1836,7 +1852,9 @@ def main() -> int:
                             raise ValueError(
                                 f"dump keys mismatch missing={sorted(missing)} extra={sorted(extra)}"
                             )
-                        dump_handle.write(json.dumps(dump_row, ensure_ascii=True) + "\n")
+                        dump_handle.write(
+                            json.dumps(dump_row, ensure_ascii=True, default=_json_safe) + "\n"
+                        )
 
             if args.save_trials:
                 trials_rows.append(

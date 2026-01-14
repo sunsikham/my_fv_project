@@ -76,6 +76,19 @@ def out_proj_hook_ctx(module, hook_fn):
         handle.remove()
 
 
+def make_out_proj_capture_hook(state):
+    def hook_fn(_module, inputs, output):
+        if not inputs:
+            return
+        x = inputs[0]
+        if x is not None and hasattr(x, "detach"):
+            state["input"] = x.detach()
+        out = output[0] if isinstance(output, tuple) else output
+        if out is not None and hasattr(out, "detach"):
+            state["output"] = out.detach()
+    return hook_fn
+
+
 def compute_target_id(
     prefix_str: str,
     full_str: str,
@@ -419,10 +432,14 @@ def main() -> int:
         "abs_delta_prob_target_self_vs_null",
         "abs_delta_logprob_target_self_vs_null",
         "max_abs_delta_logit_raw_vs_self",
+        "max_abs_delta_outproj_input_raw_vs_self",
+        "max_abs_delta_outproj_output_raw_vs_self",
     ]
 
     max_self_null = []
     max_raw_self = []
+    max_in_raw_self = []
+    max_out_raw_self = []
     debug_printed = False
 
     with open(out_path, "w", encoding="utf-8", newline="") as f:
@@ -440,16 +457,24 @@ def main() -> int:
             seq_len = inputs["input_ids"].shape[1]
             prompt_len = int(seq_len)
 
+            raw_capture = {}
             with torch.inference_mode():
-                outputs_raw = model(**inputs)
+                with out_proj_hook_ctx(
+                    target_module, make_out_proj_capture_hook(raw_capture)
+                ):
+                    outputs_raw = model(**inputs)
             logits_raw = outputs_raw.logits[0, -1]
 
             hook_state["mode"] = "self"
             hook_state["replace_vec"] = replace_vec
             hook_state["alpha"] = 1.0
+            self_capture = {}
             with out_proj_hook_ctx(target_module, hook_fn):
                 with torch.inference_mode():
-                    outputs_self = model(**inputs)
+                    with out_proj_hook_ctx(
+                        target_module, make_out_proj_capture_hook(self_capture)
+                    ):
+                        outputs_self = model(**inputs)
             logits_self = outputs_self.logits[0, -1]
 
             hook_state["mode"] = "replace"
@@ -464,6 +489,21 @@ def main() -> int:
             diff_raw_self = (logits_raw - logits_self).abs()
             max_abs_self_null = diff_self_null.max().item()
             max_abs_raw_self = diff_raw_self.max().item()
+
+            raw_input = raw_capture.get("input")
+            raw_output = raw_capture.get("output")
+            self_input = self_capture.get("input")
+            self_output = self_capture.get("output")
+            if raw_input is None or self_input is None:
+                raise ValueError("Missing out_proj input capture for raw/self run")
+            if raw_output is None or self_output is None:
+                raise ValueError("Missing out_proj output capture for raw/self run")
+            max_abs_in_raw_self = (
+                (raw_input.float() - self_input.float()).abs().max().item()
+            )
+            max_abs_out_raw_self = (
+                (raw_output.float() - self_output.float()).abs().max().item()
+            )
 
             p_raw = F.softmax(logits_raw, dim=-1)[target_id].item()
             p_self = F.softmax(logits_self, dim=-1)[target_id].item()
@@ -494,11 +534,15 @@ def main() -> int:
                         logprob_self - logprob_null
                     ),
                     "max_abs_delta_logit_raw_vs_self": max_abs_raw_self,
+                    "max_abs_delta_outproj_input_raw_vs_self": max_abs_in_raw_self,
+                    "max_abs_delta_outproj_output_raw_vs_self": max_abs_out_raw_self,
                 }
             )
 
             max_self_null.append(max_abs_self_null)
             max_raw_self.append(max_abs_raw_self)
+            max_in_raw_self.append(max_abs_in_raw_self)
+            max_out_raw_self.append(max_abs_out_raw_self)
 
             if not debug_printed and max_abs_self_null > args.warn_threshold:
                 diff_top = torch.topk(diff_self_null, k=5)
@@ -522,11 +566,19 @@ def main() -> int:
     max_self_null_val = max(max_self_null) if max_self_null else 0.0
     mean_raw_self = sum(max_raw_self) / len(max_raw_self) if max_raw_self else 0.0
     max_raw_self_val = max(max_raw_self) if max_raw_self else 0.0
+    mean_in_raw_self = sum(max_in_raw_self) / len(max_in_raw_self) if max_in_raw_self else 0.0
+    max_in_raw_self_val = max(max_in_raw_self) if max_in_raw_self else 0.0
+    mean_out_raw_self = sum(max_out_raw_self) / len(max_out_raw_self) if max_out_raw_self else 0.0
+    max_out_raw_self_val = max(max_out_raw_self) if max_out_raw_self else 0.0
 
     print("SELF vs NULL_PATCH max_abs_delta_logit:")
     print(f"  mean={mean_self_null:.6g} max={max_self_null_val:.6g}")
     print("RAW vs SELF max_abs_delta_logit:")
     print(f"  mean={mean_raw_self:.6g} max={max_raw_self_val:.6g}")
+    print("RAW vs SELF max_abs_delta_outproj_input:")
+    print(f"  mean={mean_in_raw_self:.6g} max={max_in_raw_self_val:.6g}")
+    print("RAW vs SELF max_abs_delta_outproj_output:")
+    print(f"  mean={mean_out_raw_self:.6g} max={max_out_raw_self_val:.6g}")
     if max_self_null_val > args.warn_threshold:
         print(
             "WARNING: SELF vs NULL_PATCH exceeds threshold "

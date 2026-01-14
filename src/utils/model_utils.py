@@ -95,14 +95,9 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda', revision=None):
     elif 'llama' in model_name.lower():
         if '70b' in model_name.lower() or '8b' in model_name.lower():
             # use quantization. requires `bitsandbytes` library
-            from transformers import BitsAndBytesConfig
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type='nf4',
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_compute_dtype=torch.float16
-            )
-            tokenizer = LlamaTokenizer.from_pretrained(model_name)
+            from fv.quant_config import make_bnb4_config
+            bnb_config = make_bnb4_config("fp16", torch)
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = LlamaForCausalLM.from_pretrained(
                     model_name,
                     trust_remote_code=True,

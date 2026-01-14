@@ -8,6 +8,7 @@ from typing import Optional
 
 from .adapters import resolve_attn, resolve_blocks, resolve_out_proj
 from .model_spec import get_model_spec
+from .quant_config import make_bnb4_config
 
 
 def _resolve_dtype(dtype: Optional[str], torch_module, device_str: Optional[str]) -> str:
@@ -78,7 +79,7 @@ def load_hf_model_and_tokenizer(
     """
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        from transformers import AutoModelForCausalLM, AutoTokenizer
     except Exception as exc:  # pragma: no cover - runtime import check
         raise RuntimeError(f"Failed to import transformers/torch: {exc}") from exc
 
@@ -91,10 +92,7 @@ def load_hf_model_and_tokenizer(
 
     load_kwargs = {"trust_remote_code": trust_remote_code}
     if resolved_quant == "4bit":
-        load_kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch_dtype,
-        )
+        load_kwargs["quantization_config"] = make_bnb4_config(resolved_dtype, torch)
     elif resolved_quant == "8bit":
         load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
     else:

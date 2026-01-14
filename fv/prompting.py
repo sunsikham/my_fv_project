@@ -1,7 +1,7 @@
 """Prompt builders for antonym-style tasks."""
 
 import random
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 ANTONYM_PAIRS: List[Tuple[str, str]] = [
@@ -46,8 +46,8 @@ def build_zero_shot_prompt(rng: random.Random) -> Tuple[str, str]:
 def build_prompt_qa(
     demos: List[Tuple[str, str]],
     query: Tuple[str, str],
-    prefixes: dict | None = None,
-    separators: dict | None = None,
+    prefixes: Optional[Dict[str, str]] = None,
+    separators: Optional[Dict[str, str]] = None,
     prepend_bos_token: bool = False,
     prepend_space: bool = True,
 ) -> Tuple[str, str]:

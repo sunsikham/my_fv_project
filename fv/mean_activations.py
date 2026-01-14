@@ -14,6 +14,12 @@ from .slots import (
     segments_to_text_and_spans,
     validate_idx_map,
 )
+from src.utils.prompt_utils import (
+    compute_duplicated_labels as paper_compute_duplicated_labels,
+    get_dummy_token_labels as paper_get_dummy_token_labels,
+    get_token_meta_labels as paper_get_token_meta_labels,
+    word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data,
+)
 
 
 def apply_idx_map_to_activations(
@@ -41,6 +47,67 @@ def apply_idx_map_to_activations(
             slot_act = token_act[:, 0, :, :]
         slot_acts[:, :, slot_idx, :] = slot_act
     return slot_acts
+
+
+def apply_paper_idx_map_to_activations(acts, idx_map, idx_avg):
+    # Paper idx_map maps prompt token indices -> dummy label indices.
+    acts = acts.permute(0, 2, 1, 3)  # (L, H, T, D)
+    token_indices = list(idx_map.keys())
+    slot_acts = acts[:, :, token_indices, :]
+    for (i, j) in idx_avg.values():
+        slot_acts[:, :, idx_map[i], :] = acts[:, :, i : j + 1, :].mean(dim=2)
+    return slot_acts
+
+
+def paper_prompt_data_from_pairs(
+    demos,
+    query,
+    tok_add_special: bool,
+    prefixes=None,
+    separators=None,
+    shuffle_labels: bool = False,
+):
+    word_pairs = {"input": [x for x, _y in demos], "output": [y for _x, y in demos]}
+    query_target_pair = {"input": [query[0]], "output": [query[1]]}
+    return paper_word_pairs_to_prompt_data(
+        word_pairs,
+        query_target_pair=query_target_pair,
+        prepend_bos_token=not tok_add_special,
+        prefixes=prefixes,
+        separators=separators,
+        shuffle_labels=shuffle_labels,
+    )
+
+
+def paper_labels_and_maps(
+    prompt_data,
+    tokenizer,
+    tok_add_special: bool,
+    prefixes=None,
+    separators=None,
+):
+    token_labels, prompt_string = paper_get_token_meta_labels(
+        prompt_data, tokenizer, prepend_bos=tok_add_special
+    )
+    dummy_labels = paper_get_dummy_token_labels(
+        len(prompt_data.get("examples", [])),
+        tokenizer=tokenizer,
+        model_config={"prepend_bos": tok_add_special},
+        prefixes=prefixes,
+        separators=separators,
+    )
+    idx_map, idx_avg = paper_compute_duplicated_labels(token_labels, dummy_labels)
+    return prompt_string, dummy_labels, idx_map, idx_avg
+
+
+def paper_labels_to_slot_map(dummy_labels):
+    labels = [label for _idx, label in dummy_labels]
+    slot_index_map = {}
+    if "query_predictive_token" in labels:
+        q_idx = labels.index("query_predictive_token")
+        slot_index_map["QUERY_PRED"] = q_idx
+        slot_index_map["query_predictive_token"] = q_idx
+    return labels, slot_index_map
 
 
 def compute_mean_activations_ns(
@@ -84,12 +151,7 @@ def compute_mean_activations_ns(
 
     dummy_labels = None
     slot_index_map = None
-    special_prefix = None
-    special_suffix = None
-    special_index_labels_ref = None
     avg_logged = False
-    align_logged = False
-    check_limit = 5
 
     mean = torch.zeros(
         (n_layers, n_heads, 0, head_dim),
@@ -115,108 +177,37 @@ def compute_mean_activations_ns(
             demos = [(demos_orig[i][0], shuffled[i]) for i in range(len(demos_orig))]
         else:
             demos = demos_orig
-        prefix_str, full_str = build_prompt_qa(demos, query)
-
-        segments = build_prompt_segments(demos, query)
-        full_str_segments, _spans = segments_to_text_and_spans(segments)
-        if full_str_segments != full_str:
-            raise ValueError("Prompt builder mismatch with SSOT")
-
-        encoded = tokenizer(
-            full_str,
-            return_offsets_mapping=True,
-            add_special_tokens=tok_add_special,
+        prompt_data = paper_prompt_data_from_pairs(
+            demos,
+            query,
+            tok_add_special=tok_add_special,
+            shuffle_labels=shuffle_labels,
         )
-        input_ids = encoded["input_ids"]
-        offsets = encoded["offset_mapping"]
-        if trial_idx < check_limit:
-            ids_check = tokenizer(
-                full_str,
-                add_special_tokens=tok_add_special,
-            )["input_ids"]
-            if input_ids != ids_check:
-                raise ValueError("Tokenizer output mismatch for prompt")
-
-        special_index_labels = infer_special_token_labels(
-            tokenizer, input_ids, offsets
+        prompt_string, dummy_labels_raw, idx_map, idx_avg = paper_labels_and_maps(
+            prompt_data,
+            tokenizer,
+            tok_add_special=tok_add_special,
+            prefixes=prompt_data.get("prefixes"),
+            separators=prompt_data.get("separators"),
         )
-        special_positions = sorted(special_index_labels.keys())
-        if special_positions:
-            if special_positions[0] != 0:
-                raise ValueError("Special token in unexpected position")
-            if special_positions[-1] != len(input_ids) - 1 and len(special_positions) > 1:
-                raise ValueError("Special token not in prefix/suffix position")
-
         if dummy_labels is None:
-            special_prefix = []
-            special_suffix = []
-            if special_positions and special_positions[0] == 0:
-                special_prefix.append(special_index_labels[special_positions[0]])
-            if special_positions and special_positions[-1] == len(input_ids) - 1:
-                if special_positions[-1] != special_positions[0]:
-                    special_suffix.append(special_index_labels[special_positions[-1]])
-            dummy_labels, slot_index_map = get_dummy_token_labels_and_slot_map(
-                n_icl_examples,
-                special_prefix=special_prefix,
-                special_suffix=special_suffix,
-            )
-            n_slots = len(dummy_labels)
+            n_slots = len(dummy_labels_raw)
             mean = torch.zeros(
                 (n_layers, n_heads, n_slots, head_dim),
                 dtype=torch.float32,
                 device="cpu",
             )
-            special_index_labels_ref = special_index_labels
+            dummy_labels, slot_index_map = paper_labels_to_slot_map(dummy_labels_raw)
         else:
-            if special_index_labels != special_index_labels_ref:
-                raise ValueError("Special token alignment mismatch across trials")
+            labels, slot_map = paper_labels_to_slot_map(dummy_labels_raw)
+            if dummy_labels != labels:
+                raise ValueError("dummy_labels mismatch across trials")
+            if slot_index_map != slot_map:
+                raise ValueError("slot_index_map mismatch across trials")
 
-        token_meta_labels, _input_ids, _offsets = get_token_meta_labels(
-            tokenizer,
-            full_str,
-            segments,
-            tok_add_special,
-            special_index_labels,
-        )
-        idx_map, idx_avg = compute_duplicated_labels(
-            token_meta_labels,
-            dummy_labels,
-            allow_empty_labels=["QUERY_OUT"],
-        )
-        validate_idx_map(idx_map, len(input_ids))
-        if len(idx_map) != len(dummy_labels):
-            raise ValueError("idx_map missing slots")
-        if sorted(idx_map.keys()) != list(range(len(dummy_labels))):
-            raise ValueError("idx_map keys are not contiguous")
         if idx_avg and not avg_logged:
             log("multi-token slot detected; applying mean over span")
             avg_logged = True
-        for slot_idx, token_indices in idx_map.items():
-            if dummy_labels[slot_idx] == "QUERY_OUT":
-                continue
-            if not token_indices:
-                raise ValueError("Empty token span for slot")
-        prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=tok_add_special)
-        if not prefix_ids:
-            raise ValueError("Prefix tokenization failed")
-        prefix_last_idx = len(prefix_ids) - 1
-        slot_q = slot_index_map["QUERY_PRED"]
-        if prefix_last_idx not in idx_map.get(slot_q, []):
-            if allow_alignment_skip:
-                skipped += 1
-                log(
-                    "alignment_skip: "
-                    f"trial={trial_idx} prefix_last_idx={prefix_last_idx} "
-                    f"slot_q={slot_q} span={idx_map.get(slot_q, [])}"
-                )
-                continue
-            raise ValueError("QUERY_PRED does not align with last token")
-        if not align_logged:
-            log(
-                "QUERY_PRED aligns with last token: True "
-                f"(last_idx={prefix_last_idx} span={idx_map.get(slot_q, [])})"
-            )
-            align_logged = True
 
         hook_state: Dict[int, torch.Tensor] = {}
         errors: List[str] = []
@@ -236,7 +227,7 @@ def compute_mean_activations_ns(
             handles.append(module.register_forward_pre_hook(make_pre_hook(layer_idx)))
 
         inputs = tokenizer(
-            full_str,
+            prompt_string,
             return_tensors="pt",
             add_special_tokens=tok_add_special,
         )
@@ -265,15 +256,13 @@ def compute_mean_activations_ns(
             layer_acts.append(x_heads.squeeze(0))
 
         acts = torch.stack(layer_acts, dim=0)
-        slot_acts = apply_idx_map_to_activations(acts, idx_map, len(dummy_labels))
+        slot_acts = apply_paper_idx_map_to_activations(acts, idx_map, idx_avg)
         slot_acts_cpu = slot_acts.to(dtype=torch.float32, device="cpu")
 
         mean_layers = mean[layers]
         mean[layers] = mean_layers + (slot_acts_cpu - mean_layers) / (count + 1)
         count += 1
 
-    if skipped:
-        log(f"alignment_skipped_trials={skipped}")
     if count == 0:
         raise ValueError("No trials counted for mean_activations")
 
@@ -321,11 +310,7 @@ def compute_mean_activations_fixed_trials_ns(
 
     dummy_labels = None
     slot_index_map = None
-    special_index_labels_ref = None
     avg_logged = False
-    align_logged = False
-    check_limit = 5
-    skipped = 0
 
     mean = torch.zeros(
         (n_layers, n_heads, 0, head_dim),
@@ -335,146 +320,38 @@ def compute_mean_activations_fixed_trials_ns(
     count = 0
 
     for trial_idx, trial in enumerate(trials[:n_use]):
-        demos = trial.get("demos_clean")
-        query = trial.get("query")
-        if demos is None or query is None:
-            raise ValueError(
-                "fixed_trials missing demos_clean/query; "
-                "regenerate fixed_trials with demos/query fields"
-            )
-        def _strip_leading_space(text):
-            return text[1:] if isinstance(text, str) and text.startswith(" ") else text
+        prompt_data = trial.get("prompt_data_clean")
+        if prompt_data is None:
+            raise ValueError("fixed_trials missing prompt_data_clean")
 
-        if demos and isinstance(demos[0], dict):
-            demos = [
-                (_strip_leading_space(d["input"]), _strip_leading_space(d["output"]))
-                for d in demos
-            ]
-        else:
-            demos = [(_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos]
-        if isinstance(query, dict):
-            query = (
-                _strip_leading_space(query["input"]),
-                _strip_leading_space(query["output"]),
-            )
-        else:
-            query = (_strip_leading_space(query[0]), _strip_leading_space(query[1]))
-        prefix_str, _full_str = build_prompt_qa(
-            demos,
-            query,
-            prefixes=fixed_trials.get("meta", {}).get("prefixes"),
-            separators=fixed_trials.get("meta", {}).get("separators"),
-            prepend_bos_token=bool(fixed_trials.get("meta", {}).get("prepend_bos_token_used")),
-            prepend_space=True,
+        prompt_string, dummy_labels_raw, idx_map, idx_avg = paper_labels_and_maps(
+            prompt_data,
+            tokenizer,
+            tok_add_special=tok_add_special,
+            prefixes=prompt_data.get("prefixes"),
+            separators=prompt_data.get("separators"),
         )
-        fixed_prefix = trial.get("clean_prompt_str")
-        target_str = trial.get("target_str")
-        if fixed_prefix is None or target_str is None:
-            raise ValueError("fixed_trials missing clean_prompt_str/target_str")
-        if fixed_prefix != prefix_str:
-            raise ValueError("fixed_trials clean prompt mismatch with SSOT")
-        prefix_str = fixed_prefix
-        full_str = f"{prefix_str}{target_str}"
-
-        segments = build_prompt_segments(demos, query)
-        full_str_segments, _spans = segments_to_text_and_spans(segments)
-        if full_str_segments != full_str:
-            bos = tokenizer.bos_token or tokenizer.eos_token
-            if bos and full_str.startswith(bos) and full_str[len(bos) :] == full_str_segments:
-                segments = [("SPECIAL_BOS", bos)] + list(segments)
-                full_str_segments, _spans = segments_to_text_and_spans(segments)
-            else:
-                raise ValueError("Prompt builder mismatch with SSOT")
-        if full_str_segments != full_str:
-            raise ValueError("Prompt builder mismatch with SSOT")
-
-        encoded = tokenizer(
-            full_str,
-            return_offsets_mapping=True,
-            add_special_tokens=tok_add_special,
-        )
-        input_ids = encoded["input_ids"]
-        offsets = encoded["offset_mapping"]
-        if trial_idx < check_limit:
-            ids_check = tokenizer(
-                full_str,
-                add_special_tokens=tok_add_special,
-            )["input_ids"]
-            if input_ids != ids_check:
-                raise ValueError("Tokenizer output mismatch for prompt")
-
-        special_index_labels = infer_special_token_labels(
-            tokenizer, input_ids, offsets
-        )
-        special_positions = sorted(special_index_labels.keys())
-        if special_positions:
-            if special_positions[0] != 0:
-                raise ValueError("Special token in unexpected position")
-            if special_positions[-1] != len(input_ids) - 1 and len(special_positions) > 1:
-                raise ValueError("Special token not in prefix/suffix position")
+        clean_prompt = trial.get("clean_prompt_str")
+        if clean_prompt is not None and clean_prompt != prompt_string:
+            raise ValueError("fixed_trials clean prompt mismatch with paper prompt_string")
 
         if dummy_labels is None:
-            special_prefix = []
-            special_suffix = []
-            if special_positions and special_positions[0] == 0:
-                special_prefix.append(special_index_labels[special_positions[0]])
-            if special_positions and special_positions[-1] == len(input_ids) - 1:
-                if special_positions[-1] != special_positions[0]:
-                    special_suffix.append(special_index_labels[special_positions[-1]])
-            dummy_labels, slot_index_map = get_dummy_token_labels_and_slot_map(
-                len(demos),
-                special_prefix=special_prefix,
-                special_suffix=special_suffix,
-            )
             mean = torch.zeros(
-                (n_layers, n_heads, len(dummy_labels), head_dim),
+                (n_layers, n_heads, len(dummy_labels_raw), head_dim),
                 dtype=torch.float32,
                 device="cpu",
             )
-            special_index_labels_ref = special_index_labels
+            dummy_labels, slot_index_map = paper_labels_to_slot_map(dummy_labels_raw)
         else:
-            if special_index_labels != special_index_labels_ref:
-                raise ValueError("Special token alignment mismatch across trials")
+            labels, slot_map = paper_labels_to_slot_map(dummy_labels_raw)
+            if dummy_labels != labels:
+                raise ValueError("dummy_labels mismatch across trials")
+            if slot_index_map != slot_map:
+                raise ValueError("slot_index_map mismatch across trials")
 
-        token_meta_labels, _input_ids, _offsets = get_token_meta_labels(
-            tokenizer,
-            full_str,
-            segments,
-            tok_add_special,
-            special_index_labels,
-        )
-        idx_map, idx_avg = compute_duplicated_labels(
-            token_meta_labels,
-            dummy_labels,
-            allow_empty_labels=["QUERY_OUT"],
-        )
-        validate_idx_map(idx_map, len(input_ids))
-        if len(idx_map) != len(dummy_labels):
-            raise ValueError("idx_map missing slots")
-        if sorted(idx_map.keys()) != list(range(len(dummy_labels))):
-            raise ValueError("idx_map keys are not contiguous")
         if idx_avg and not avg_logged:
             log("multi-token slot detected; applying mean over span")
             avg_logged = True
-        for slot_idx, token_indices in idx_map.items():
-            if dummy_labels[slot_idx] == "QUERY_OUT":
-                continue
-            if not token_indices:
-                raise ValueError("Empty token span for slot")
-
-        prefix_ids = tokenizer.encode(prefix_str, add_special_tokens=tok_add_special)
-        if not prefix_ids:
-            raise ValueError("Prefix tokenization failed")
-        prefix_last_idx = len(prefix_ids) - 1
-        slot_q = slot_index_map["QUERY_PRED"]
-        if prefix_last_idx not in idx_map.get(slot_q, []):
-            raise ValueError("QUERY_PRED does not align with last token")
-        if not align_logged:
-            log(
-                "QUERY_PRED aligns with last token: True "
-                f"(last_idx={prefix_last_idx} span={idx_map.get(slot_q, [])})"
-            )
-            align_logged = True
 
         hook_state: Dict[int, torch.Tensor] = {}
         errors: List[str] = []
@@ -494,7 +371,7 @@ def compute_mean_activations_fixed_trials_ns(
             handles.append(module.register_forward_pre_hook(make_pre_hook(layer_idx)))
 
         inputs = tokenizer(
-            full_str,
+            prompt_string,
             return_tensors="pt",
             add_special_tokens=tok_add_special,
         )
@@ -523,7 +400,7 @@ def compute_mean_activations_fixed_trials_ns(
             layer_acts.append(x_heads.squeeze(0))
 
         acts = torch.stack(layer_acts, dim=0)
-        slot_acts = apply_idx_map_to_activations(acts, idx_map, len(dummy_labels))
+        slot_acts = apply_paper_idx_map_to_activations(acts, idx_map, idx_avg)
         slot_acts_cpu = slot_acts.to(dtype=torch.float32, device="cpu")
 
         mean_layers = mean[layers]
