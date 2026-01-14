@@ -93,7 +93,7 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda', revision=None):
                       "prepend_bos":True}
         
     elif 'llama' in model_name.lower():
-        if '70b' in model_name.lower():
+        if '70b' in model_name.lower() or '8b' in model_name.lower():
             # use quantization. requires `bitsandbytes` library
             from transformers import BitsAndBytesConfig
             bnb_config = BitsAndBytesConfig(
