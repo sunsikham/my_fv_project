@@ -228,6 +228,8 @@ def make_out_proj_head_output_overrider(
             raise ValueError("seq_token_idx out of range")
 
         x_heads = x.reshape(batch_size, seq_len, n_heads, head_dim)
+        debug_capture = bool(state.get("debug_capture")) if state is not None else False
+        base_x_heads = x_heads.clone() if debug_capture else None
         current_mode = state.get("mode")
         current_replace = state.get("replace_vec")
         base_vec = x_heads[:, t_idx, head_idx, :]
@@ -248,6 +250,48 @@ def make_out_proj_head_output_overrider(
             raise ValueError("mode must be 'replace' or 'self'")
 
         x_heads[:, t_idx, head_idx, :] = vec
+        if debug_capture and state is not None and base_x_heads is not None:
+            def _summarize(tensor):
+                tensor_f = tensor.float()
+                return {
+                    "mean": float(tensor_f.mean().item()),
+                    "norm": float(tensor_f.norm().item()),
+                }
+
+            target_before = base_x_heads[:, t_idx, head_idx, :]
+            target_after = x_heads[:, t_idx, head_idx, :]
+            stats = {
+                "mode": current_mode,
+                "target_before": _summarize(target_before),
+                "target_after": _summarize(target_after),
+                "target_diff_max": float(
+                    (target_after - target_before).abs().max().item()
+                ),
+                "other_heads_diff_max": None,
+                "other_tokens_diff_max": None,
+            }
+            if current_mode == "replace":
+                stats["replace_vec"] = _summarize(repl_vec)
+
+            if n_heads > 1:
+                other_head_mask = (
+                    torch.arange(n_heads, device=x_heads.device) != head_idx
+                )
+                other_before = base_x_heads[:, t_idx, other_head_mask, :]
+                other_after = x_heads[:, t_idx, other_head_mask, :]
+                stats["other_heads_diff_max"] = float(
+                    (other_after - other_before).abs().max().item()
+                )
+            if seq_len > 1:
+                other_token_mask = (
+                    torch.arange(seq_len, device=x_heads.device) != t_idx
+                )
+                other_before = base_x_heads[:, other_token_mask, head_idx, :]
+                other_after = x_heads[:, other_token_mask, head_idx, :]
+                stats["other_tokens_diff_max"] = float(
+                    (other_after - other_before).abs().max().item()
+                )
+            state["debug_stats"] = stats
         x_patched = x_heads.reshape(batch_size, seq_len, resid_dim)
 
         w_use, b_use = _get_weight_and_bias(module, x_patched.dtype, x_patched.device)

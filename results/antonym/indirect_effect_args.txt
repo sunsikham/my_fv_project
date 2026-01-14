@@ -1,0 +1,32 @@
+{
+  "dataset_name": "antonym",
+  "model_name": "gpt2",
+  "root_data_dir": "runs/ie_compare/dataset_files",
+  "save_path_root": "results/antonym",
+  "seed": 42,
+  "n_shots": 10,
+  "n_trials": 10,
+  "test_split": 0.3,
+  "device": "cpu",
+  "mean_activations_path": "results/antonym/antonym_mean_head_activations_FIXED.pt",
+  "last_token_only": true,
+  "prefixes": {
+    "input": "Q:",
+    "output": "A:",
+    "instructions": ""
+  },
+  "separators": {
+    "input": "\n",
+    "output": "\n\n",
+    "instructions": ""
+  },
+  "revision": null,
+  "fixed_trials_path": "datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_WITH_DEMOS.json",
+  "dump_trial_metrics_jsonl": "runs/ie_compare/paper_trial_metrics_L0H0.jsonl",
+  "dump_max_trials": 10,
+  "dump_include_prompt": 1,
+  "dump_layer": 0,
+  "dump_head": 0,
+  "debug_prompt_check": 0,
+  "debug_n": 3
+}

@@ -10,3 +10,6 @@ rich
 python-dotenv
 matplotlib
 tqdm
+scikit-learn
+baukit
+bitsandbytes

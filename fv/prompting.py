@@ -44,14 +44,40 @@ def build_zero_shot_prompt(rng: random.Random) -> Tuple[str, str]:
 
 
 def build_prompt_qa(
-    demos: List[Tuple[str, str]], query: Tuple[str, str]
+    demos: List[Tuple[str, str]],
+    query: Tuple[str, str],
+    prefixes: dict | None = None,
+    separators: dict | None = None,
+    prepend_bos_token: bool = False,
+    prepend_space: bool = True,
 ) -> Tuple[str, str]:
-    """Build Q/A style prompt with no trailing space after 'A:'."""
-    demo_blocks = [f"Q: {x}\nA: {y}" for x, y in demos]
-    query_prefix = f"Q: {query[0]}\nA:"
-    if demo_blocks:
-        prefix_str = "\n\n".join(demo_blocks + [query_prefix])
-    else:
-        prefix_str = query_prefix
-    full_str = f"{prefix_str} {query[1]}"
+    """Build Q/A style prompt using paper-style prefixes/separators."""
+    use_prefixes = prefixes or {"input": "Q:", "output": "A:", "instructions": ""}
+    use_separators = separators or {"input": "\n", "output": "\n\n", "instructions": ""}
+    if prepend_bos_token:
+        use_prefixes = {
+            k: (v if k != "instructions" else "<|endoftext|>" + v)
+            for k, v in use_prefixes.items()
+        }
+
+    prompt = ""
+    prompt += (
+        use_prefixes["instructions"]
+        + ""
+        + use_separators["instructions"]
+    )
+
+    for x, y in demos:
+        demo_in = f" {x}" if prepend_space else str(x)
+        demo_out = f" {y}" if prepend_space else str(y)
+        prompt += use_prefixes["input"] + demo_in + use_separators["input"]
+        prompt += use_prefixes["output"] + demo_out + use_separators["output"]
+
+    query_in = f" {query[0]}" if prepend_space else str(query[0])
+    prompt += use_prefixes["input"] + query_in + use_separators["input"]
+    prompt += use_prefixes["output"]
+
+    prefix_str = prompt
+    query_out = f" {query[1]}" if prepend_space else str(query[1])
+    full_str = f"{prefix_str}{query_out}"
     return prefix_str, full_str

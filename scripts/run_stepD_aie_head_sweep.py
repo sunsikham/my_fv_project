@@ -16,11 +16,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from fv.corrupt import make_corrupted_demos
 from fv.dataset_loader import load_pairs_antonym, sample_demos_and_query
+from fv.fixed_trials import load_fixed_trials
 from fv.hooks import get_out_proj_pre_hook_target
 from fv.io import prepare_run_dirs, resolve_out_dir, save_csv, save_json
 from fv.adapters import infer_head_dims, resolve_blocks
 from fv.hf_loader import load_hf_model_and_tokenizer
-from fv.mean_activations import compute_mean_activations_ns
+from fv.mean_activations import (
+    compute_mean_activations_fixed_trials_ns,
+    compute_mean_activations_ns,
+)
 from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
 from fv.prompting import build_prompt_qa
@@ -93,6 +97,225 @@ def mean_abs(values):
     if not values:
         return 0.0
     return sum(abs(value) for value in values) / len(values)
+
+
+def run_stepd_debug(
+    *,
+    model,
+    tokenizer,
+    device,
+    pairs,
+    model_cfg,
+    layer,
+    head,
+    tok_add_special: bool,
+    baseline_recompute_outproj: bool,
+    resolved_quant,
+    seed: int,
+    n_icl_examples: int,
+    n_trials: int,
+    model_spec: str,
+    log,
+) -> None:
+    import torch
+    import torch.nn.functional as F
+
+    target_module, _target_name = get_out_proj_pre_hook_target(
+        model, layer, spec_name=model_spec, logger=log
+    )
+    hook_state = {"mode": "self", "replace_vec": None, "seq_token_idx": None}
+    hook_state["debug_capture"] = True
+    hook = make_out_proj_head_output_overrider(
+        layer_idx=layer,
+        head_idx=head,
+        seq_token_idx=0,
+        mode="self",
+        replace_vec=None,
+        model_config=model_cfg,
+        resolved_quant=resolved_quant,
+        force_recompute_outproj=baseline_recompute_outproj,
+        state=hook_state,
+        logger=log,
+    )
+    replace_vec = torch.full(
+        (int(model_cfg["head_dim"]),), 0.123, dtype=torch.float32, device=device
+    )
+
+    def _fmt(value):
+        if value is None:
+            return "None"
+        return f"{value:.3e}"
+
+    def _format_stats(label, stats):
+        if not stats:
+            log(f"[StepD debug] {label}: missing stats")
+            return
+        target_before = stats.get("target_before", {})
+        target_after = stats.get("target_after", {})
+        replace_stats = stats.get("replace_vec", None)
+        log(
+            "[StepD debug] "
+            f"{label} mode={stats.get('mode')} "
+            f"target_before(mean={_fmt(target_before.get('mean'))} "
+            f"norm={_fmt(target_before.get('norm'))}) "
+            f"target_after(mean={_fmt(target_after.get('mean'))} "
+            f"norm={_fmt(target_after.get('norm'))}) "
+            f"target_diff_max={_fmt(stats.get('target_diff_max'))} "
+            f"other_heads_diff_max={_fmt(stats.get('other_heads_diff_max'))} "
+            f"other_tokens_diff_max={_fmt(stats.get('other_tokens_diff_max'))}"
+        )
+        if replace_stats is not None:
+            log(
+                "[StepD debug] "
+                f"{label} replace_vec(mean={_fmt(replace_stats.get('mean'))} "
+                f"norm={_fmt(replace_stats.get('norm'))})"
+            )
+
+    max_abs_diffs = []
+    p_target_diffs = []
+    for trial_idx in range(n_trials):
+        demos, query = sample_demos_and_query(
+            pairs, n_icl_examples, seed=seed + trial_idx
+        )
+        prefix_str, full_str = build_prompt_qa(demos, query)
+        boundary_prefix, boundary_answer = _boundary_prefix_and_answer_from_full(
+            prefix_str, full_str
+        )
+        target_id = get_target_first_token_id_from_boundary(
+            boundary_prefix,
+            boundary_answer,
+            tokenizer,
+            tokenize_kwargs={"add_special_tokens": tok_add_special},
+        )
+        if trial_idx < 3:
+            target_token = tokenizer.convert_ids_to_tokens(target_id)
+            try:
+                slot_info = compute_query_predictive_slot(
+                    prefix_str,
+                    full_str,
+                    tokenizer,
+                    add_special_tokens=tok_add_special,
+                )
+                src_id = slot_info["target_id"]
+                src_token = slot_info["target_token"]
+                token_id_match = src_id == target_id
+                token_match = src_token == target_token
+                if not token_match and src_token.lstrip() == target_token.lstrip():
+                    mismatch_tag = "leading_space_mismatch"
+                elif not token_match:
+                    mismatch_tag = "token_mismatch"
+                else:
+                    mismatch_tag = "match"
+                log(
+                    "[StepD debug] "
+                    f"trial={trial_idx} src_token_id_of_interest={src_id} "
+                    f"src_token={repr(src_token)} "
+                    f"target_id={target_id} target_token={repr(target_token)} "
+                    f"match_id={token_id_match} match_token={token_match} "
+                    f"tag={mismatch_tag}"
+                )
+            except Exception as exc:  # pragma: no cover - debug logging only
+                log(f"[StepD debug] trial={trial_idx} src_compare_failed: {exc}")
+
+        inputs = tokenizer(
+            prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+        )
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+        hook_state["seq_token_idx"] = int(inputs["input_ids"].shape[1] - 1)
+        prefix_ids = inputs["input_ids"][0].tolist()
+        full_ids = tokenizer(
+            full_str, add_special_tokens=tok_add_special
+        )["input_ids"]
+        if hook_state["seq_token_idx"] != len(prefix_ids) - 1:
+            log(
+                "[StepD debug] slot alignment mismatch: "
+                f"seq_token_idx={hook_state['seq_token_idx']} "
+                f"prefix_last_idx={len(prefix_ids) - 1}"
+            )
+        if hook_state["seq_token_idx"] < len(full_ids):
+            decoded_prefix = tokenizer.decode(
+                [prefix_ids[hook_state["seq_token_idx"]]]
+            )
+            decoded_full = tokenizer.decode(
+                [full_ids[hook_state["seq_token_idx"]]]
+            )
+            if decoded_prefix != decoded_full:
+                if decoded_prefix.lstrip() == decoded_full.lstrip():
+                    mismatch_tag = "leading_space_mismatch"
+                else:
+                    mismatch_tag = "token_mismatch"
+                log(
+                    "[StepD debug] "
+                    f"patch_token_mismatch={mismatch_tag} "
+                    f"decoded_prefix={repr(decoded_prefix)} "
+                    f"decoded_full={repr(decoded_full)}"
+                )
+        else:
+            log(
+                "[StepD debug] "
+                f"full_ids too short for seq_token_idx={hook_state['seq_token_idx']}"
+            )
+
+        with torch.inference_mode():
+            outputs_raw = model(**inputs)
+        hook_state["mode"] = "self"
+        hook_state["replace_vec"] = None
+        hook_state["debug_stats"] = None
+        handle = target_module.register_forward_hook(hook)
+        with torch.inference_mode():
+            outputs_self = model(**inputs)
+        handle.remove()
+        if trial_idx < 3:
+            _format_stats("baseline(self)", hook_state.get("debug_stats"))
+
+        raw_logits = outputs_raw.logits[0, -1]
+        self_logits = outputs_self.logits[0, -1]
+        max_abs_diff = (raw_logits - self_logits).abs().max().item()
+        max_abs_diffs.append(max_abs_diff)
+
+        p_raw = F.softmax(raw_logits.float(), dim=-1)[target_id].item()
+        p_self = F.softmax(self_logits.float(), dim=-1)[target_id].item()
+        p_diff = abs(p_raw - p_self)
+        p_target_diffs.append(p_diff)
+
+        if trial_idx == 0:
+            raw_argmax = int(torch.argmax(raw_logits).item())
+            self_argmax = int(torch.argmax(self_logits).item())
+            log(
+                "[StepD debug] "
+                f"max_abs_diff={max_abs_diff:.6e} "
+                f"raw_argmax={raw_argmax} self_argmax={self_argmax}"
+            )
+        log(
+            "[StepD debug] "
+            f"trial={trial_idx} |p_target(raw)-p_target(self)|={p_diff:.6e}"
+        )
+        if trial_idx < 3:
+            hook_state["mode"] = "replace"
+            hook_state["replace_vec"] = replace_vec
+            hook_state["alpha"] = 1.0
+            hook_state["debug_stats"] = None
+            handle = target_module.register_forward_hook(hook)
+            with torch.inference_mode():
+                _ = model(**inputs)
+            handle.remove()
+            _format_stats("patch(replace)", hook_state.get("debug_stats"))
+
+    max_logit_diff = max(max_abs_diffs) if max_abs_diffs else 0.0
+    mean_p_diff = mean(p_target_diffs) if p_target_diffs else 0.0
+    max_p_diff = max(p_target_diffs) if p_target_diffs else 0.0
+    log(
+        "[StepD debug] "
+        f"p_target_diff_mean={mean_p_diff:.6e} "
+        f"p_target_diff_max={max_p_diff:.6e}"
+    )
+    if max_logit_diff != 0.0:
+        log(
+            "[StepD debug] baseline contamination detected: "
+            "max_abs_diff != 0 (hook path mismatch)"
+        )
+    else:
+        log("[StepD debug] baseline clean: max_abs_diff == 0")
 
 
 def _make_demo_only_shuffle(demos, perm):
@@ -188,6 +411,13 @@ def compute_trial_idx_map(
 ):
     segments = build_prompt_segments(demos, query)
     full_str_segments, _spans = segments_to_text_and_spans(segments)
+    if full_str_segments != full_str:
+        bos = tokenizer.bos_token or tokenizer.eos_token
+        if bos and full_str.startswith(bos) and full_str[len(bos) :] == full_str_segments:
+            segments = [("SPECIAL_BOS", bos)] + list(segments)
+            full_str_segments, _spans = segments_to_text_and_spans(segments)
+        else:
+            raise ValueError("Prompt builder mismatch with SSOT")
     if full_str_segments != full_str:
         raise ValueError("Prompt builder mismatch with SSOT")
 
@@ -317,7 +547,7 @@ def main() -> int:
     parser.add_argument(
         "--successful_icl_only",
         type=int,
-        default=1,
+        default=0,
         help="Keep only successful ICL trials (default: 1)",
     )
     parser.add_argument(
@@ -332,6 +562,29 @@ def main() -> int:
         type=int,
         default=0,
         help="Shuffle demo labels only (default: 0)",
+    )
+    parser.add_argument(
+        "--fixed_trials_path",
+        default=None,
+        help="Optional fixed_trials.json path for deterministic trials",
+    )
+    parser.add_argument(
+        "--mean_only",
+        type=int,
+        default=0,
+        help="If 1, compute mean_activations and exit",
+    )
+    parser.add_argument(
+        "--debug_prompt_check",
+        type=int,
+        default=0,
+        help="If 1, print fixed_trials prompt/token checks and exit",
+    )
+    parser.add_argument(
+        "--debug_n",
+        type=int,
+        default=3,
+        help="Number of fixed_trials to print in debug check",
     )
     parser.add_argument(
         "--run_id",
@@ -350,13 +603,57 @@ def main() -> int:
         help="Save trial-level CSV (default: 0)",
     )
     parser.add_argument(
+        "--dump_trial_metrics_jsonl",
+        default=None,
+        help="Optional JSONL path for trial metrics dump",
+    )
+    parser.add_argument(
+        "--dump_layer",
+        type=int,
+        default=None,
+        help="Filter dump to a layer (dump only)",
+    )
+    parser.add_argument(
+        "--dump_head",
+        type=int,
+        default=None,
+        help="Filter dump to a head (dump only)",
+    )
+    parser.add_argument(
+        "--dump_max_trials",
+        type=int,
+        default=-1,
+        help="Max trials to dump (default: all)",
+    )
+    parser.add_argument(
+        "--dump_include_prompt",
+        type=int,
+        default=1,
+        help="Include prompt tail repr in dump (1/0)",
+    )
+    parser.add_argument(
         "--score_key",
         default="mean_delta_p",
         help="Score key for ranking (default: mean_delta_p)",
     )
+    parser.add_argument(
+        "--debug_stepd",
+        action="store_true",
+        help="Run StepD parity debug on local gpt2 (cpu) and exit",
+    )
     args = parser.parse_args()
 
-    if args.n_trials < 1:
+    if args.debug_stepd:
+        args.model = "gpt2"
+        args.model_spec = "gpt2"
+        args.device = "cpu"
+        args.dtype = "fp32"
+        args.quant = "none"
+        args.device_map = None
+        args.layers = "0"
+        args.heads = "0"
+
+    if args.n_trials < 1 and not args.debug_stepd:
         print("n_trials must be >= 1")
         return 1
     if args.n_icl_examples < 1:
@@ -400,6 +697,11 @@ def main() -> int:
     log(f"seed: {args.seed}")
     log(f"score_key: {args.score_key}")
     log(f"shuffle_labels: {args.shuffle_labels}")
+    log(f"fixed_trials_path: {args.fixed_trials_path}")
+    log(f"mean_only: {args.mean_only}")
+    log(f"debug_prompt_check: {args.debug_prompt_check}")
+    log(f"debug_n: {args.debug_n}")
+    log(f"dump_trial_metrics_jsonl: {args.dump_trial_metrics_jsonl}")
 
     try:
         import torch
@@ -437,12 +739,70 @@ def main() -> int:
             )
         args.successful_icl_only = 0
 
-    try:
-        pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
-    except Exception as exc:
-        log(f"Failed to load dataset: {exc}")
-        log_file.close()
-        return 1
+    fixed_trials = None
+    if args.fixed_trials_path:
+        try:
+            fixed_trials = load_fixed_trials(args.fixed_trials_path)
+        except Exception as exc:
+            log(f"Failed to load fixed_trials: {exc}")
+            log_file.close()
+            return 1
+        fixed_meta = fixed_trials.get("meta", {})
+        fixed_n_shots = fixed_meta.get("n_shots")
+        if fixed_n_shots is None:
+            log("fixed_trials meta missing n_shots")
+            log_file.close()
+            return 1
+        if fixed_n_shots != args.n_icl_examples:
+            log(
+                "fixed_trials n_shots mismatch; overriding "
+                f"args.n_icl_examples {args.n_icl_examples} -> {fixed_n_shots}"
+            )
+            args.n_icl_examples = int(fixed_n_shots)
+        fixed_n_trials = fixed_meta.get("n_trials")
+        if fixed_n_trials is not None and fixed_n_trials != args.n_trials:
+            log(
+                "fixed_trials n_trials mismatch; overriding "
+                f"args.n_trials {args.n_trials} -> {fixed_n_trials}"
+            )
+            args.n_trials = int(fixed_n_trials)
+        if args.n_mean_trials is None:
+            args.n_mean_trials = args.n_trials
+        if args.n_mean_trials > args.n_trials:
+            log(
+                "n_mean_trials exceeds n_trials; overriding "
+                f"{args.n_mean_trials} -> {args.n_trials}"
+            )
+            args.n_mean_trials = args.n_trials
+        if args.successful_icl_only:
+            log("fixed_trials provided; forcing successful_icl_only=0")
+        args.successful_icl_only = 0
+        if args.shuffle_labels:
+            log("fixed_trials provided; forcing shuffle_labels=0")
+        args.shuffle_labels = 0
+        fixed_trials_list = fixed_trials.get("trials", [])
+        if not fixed_trials_list:
+            log("fixed_trials missing trials list")
+            log_file.close()
+            return 1
+        if args.n_trials > len(fixed_trials_list):
+            log(
+                "fixed_trials shorter than n_trials; "
+                "regenerate fixed_trials or lower --n_trials"
+            )
+            log_file.close()
+            return 1
+    else:
+        log("no fixed_trials: unchanged")
+
+    pairs = None
+    if fixed_trials is None:
+        try:
+            pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
+        except Exception as exc:
+            log(f"Failed to load dataset: {exc}")
+            log_file.close()
+            return 1
 
     try:
         loader_device = None if args.device_map else args.device
@@ -557,7 +917,29 @@ def main() -> int:
             log_file.close()
             return 1
 
-    if len(pairs) < args.n_icl_examples + 1:
+    if args.debug_stepd:
+        log("[StepD debug] running raw vs self parity check")
+        run_stepd_debug(
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            pairs=pairs,
+            model_cfg=model_cfg,
+            layer=layers[0],
+            head=heads[0],
+            tok_add_special=tok_add_special,
+            baseline_recompute_outproj=baseline_recompute_outproj,
+            resolved_quant=resolved_quant,
+            seed=args.seed,
+            n_icl_examples=args.n_icl_examples,
+            n_trials=args.n_trials,
+            model_spec=args.model_spec,
+            log=log,
+        )
+        log_file.close()
+        return 0
+
+    if fixed_trials is None and len(pairs) < args.n_icl_examples + 1:
         log(
             "Not enough dataset pairs for requested demos + query: "
             f"pairs={len(pairs)} n_icl_examples={args.n_icl_examples}"
@@ -578,7 +960,232 @@ def main() -> int:
         log_file.close()
         return 1
 
-    if args.successful_icl_only:
+    if fixed_trials is not None:
+        for trial_idx, trial in enumerate(fixed_trials["trials"][: args.n_trials]):
+            demos_clean = trial.get("demos_clean")
+            demos_corrupted = trial.get("demos_corrupted")
+            query = trial.get("query")
+            if demos_clean is None or demos_corrupted is None or query is None:
+                log(
+                    "fixed_trials missing demos/query; "
+                    "regenerate fixed_trials with demos_clean/demos_corrupted/query"
+                )
+                log_file.close()
+                return 1
+            def _strip_leading_space(text):
+                return text[1:] if isinstance(text, str) and text.startswith(" ") else text
+
+            def _normalize_demos(demos):
+                if demos and isinstance(demos[0], dict):
+                    return [
+                        (_strip_leading_space(d["input"]), _strip_leading_space(d["output"]))
+                        for d in demos
+                    ]
+                return [
+                    (_strip_leading_space(x), _strip_leading_space(y)) for x, y in demos
+                ]
+
+            def _normalize_query(q):
+                if isinstance(q, dict):
+                    return (
+                        _strip_leading_space(q["input"]),
+                        _strip_leading_space(q["output"]),
+                    )
+                return (_strip_leading_space(q[0]), _strip_leading_space(q[1]))
+
+            demos_clean_norm = _normalize_demos(demos_clean)
+            demos_corrupted_norm = _normalize_demos(demos_corrupted)
+            query_norm = _normalize_query(query)
+
+            fixed_clean = trial.get("clean_prompt_str")
+            fixed_corrupted = trial.get("corrupted_prompt_str")
+            if fixed_clean is None or fixed_corrupted is None:
+                log(f"fixed_trials missing prompt strings at trial {trial_idx}")
+                log_file.close()
+                return 1
+            clean_prefix_str, _clean_full_str = build_prompt_qa(
+                demos_clean_norm,
+                query_norm,
+                prefixes=fixed_meta.get("prefixes"),
+                separators=fixed_meta.get("separators"),
+                prepend_bos_token=bool(fixed_meta.get("prepend_bos_token_used")),
+                prepend_space=True,
+            )
+            corrupted_prefix_str, _tmp_full_str = build_prompt_qa(
+                demos_corrupted_norm,
+                query_norm,
+                prefixes=fixed_meta.get("prefixes"),
+                separators=fixed_meta.get("separators"),
+                prepend_bos_token=bool(fixed_meta.get("prepend_bos_token_used")),
+                prepend_space=True,
+            )
+            if fixed_clean != clean_prefix_str:
+                log(f"fixed_trials clean prompt mismatch at trial {trial_idx}")
+                log_file.close()
+                return 1
+            if fixed_corrupted != corrupted_prefix_str:
+                log(f"fixed_trials corrupted prompt mismatch at trial {trial_idx}")
+                log_file.close()
+                return 1
+            target_id = trial.get("target_first_token_id")
+            if target_id is None:
+                target_id = trial.get("target_id")
+            if target_id is None:
+                log(f"fixed_trials missing target_first_token_id at trial {trial_idx}")
+                log_file.close()
+                return 1
+            target_str = trial.get("target_str")
+            if target_str is None:
+                log(f"fixed_trials missing target_str at trial {trial_idx}")
+                log_file.close()
+                return 1
+            corrupted_prefix_str = fixed_corrupted
+            clean_prefix_str = fixed_clean
+            corrupted_full_str = f"{fixed_corrupted}{target_str}"
+            try:
+                (
+                    idx_map,
+                    dummy_labels,
+                    slot_index_map,
+                    special_index_labels,
+                    full_input_ids,
+                ) = compute_trial_idx_map(
+                    demos_corrupted_norm,
+                    query_norm,
+                    corrupted_full_str,
+                    tokenizer,
+                    tok_add_special,
+                    args.n_icl_examples,
+                    dummy_labels_ref=dummy_labels_ref,
+                    slot_index_map_ref=slot_index_map_ref,
+                    special_index_labels_ref=special_index_labels_ref,
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            if dummy_labels_ref is None:
+                dummy_labels_ref = dummy_labels
+                slot_index_map_ref = slot_index_map
+                special_index_labels_ref = special_index_labels
+            slot_q = slot_index_map["QUERY_PRED"]
+            try:
+                seq_token_idx = resolve_slot_seq_token_idx(
+                    idx_map, slot_q, require_single=False
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                return 1
+            prefix_ids = tokenizer.encode(
+                corrupted_prefix_str, add_special_tokens=tok_add_special
+            )
+            prefix_last_idx = len(prefix_ids) - 1
+            if seq_token_idx != prefix_last_idx:
+                bos_token = tokenizer.bos_token or tokenizer.eos_token
+                if bos_token and corrupted_prefix_str.startswith(bos_token):
+                    log(
+                        "slot alignment mismatch with BOS prefix; "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={prefix_last_idx} "
+                        "-> using prefix_last_idx"
+                    )
+                    seq_token_idx = prefix_last_idx
+                else:
+                    log(
+                        "slot alignment mismatch: "
+                        f"seq_token_idx={seq_token_idx} "
+                        f"prefix_last_idx={prefix_last_idx}"
+                    )
+                    log_file.close()
+                    return 1
+            trials.append(
+                {
+                    "trial_idx": trial_idx,
+                    "clean_prefix_str": fixed_clean,
+                    "corrupted_prefix_str": fixed_corrupted,
+                    "corrupted_full_str": corrupted_full_str,
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
+                    "demo_perm": None,
+                    "demo_fixed_points": None,
+                    "demo_outputs_before": None,
+                    "demo_outputs_after": None,
+                    "idx_map": idx_map,
+                    "seq_token_idx": seq_token_idx,
+                    "full_input_ids": full_input_ids,
+                    "target_str": trial.get("target_str"),
+                    "answer_ids": trial.get("answer_ids"),
+                }
+            )
+        attempts = len(trials)
+        kept = len(trials)
+        if args.debug_prompt_check:
+            debug_n = max(0, int(args.debug_n))
+            debug_lines = []
+            debug_lines.append("[CHECK] tokenizer")
+            debug_lines.append(
+                "  tok_add_special={} bos_token={} bos_id={}".format(
+                    tok_add_special,
+                    repr(tokenizer.bos_token),
+                    tokenizer.bos_token_id,
+                )
+            )
+            for trial in trials[:debug_n]:
+                prompt_string = trial["corrupted_prefix_str"]
+                target_id = trial["target_id"]
+                target_str = trial.get("target_str")
+                answer_ids = trial.get("answer_ids") or []
+                enc = tokenizer(prompt_string, add_special_tokens=tok_add_special)
+                ids = enc["input_ids"]
+                ids_len = len(ids)
+                ids_first5 = ids[:5]
+                ids_last10 = ids[-10:]
+                toks_last10 = [repr(tokenizer.decode([i])) for i in ids_last10]
+                answer_ids_first = None
+                if answer_ids:
+                    answer_ids_first = answer_ids[0]
+                elif target_str is not None:
+                    answer_ids_first = tokenizer(
+                        target_str, add_special_tokens=False
+                    )["input_ids"][0]
+                debug_lines.append(f"[CHECK] trial={trial['trial_idx']}")
+                debug_lines.append(f"  prompt_repr={repr(prompt_string)}")
+                debug_lines.append(
+                    f"  prompt_head80={repr(prompt_string[:80])} prompt_tail80={repr(prompt_string[-80:])}"
+                )
+                debug_lines.append(
+                    "  tok_add_special={} bos_token={} bos_id={}".format(
+                        tok_add_special,
+                        repr(tokenizer.bos_token),
+                        tokenizer.bos_token_id,
+                    )
+                )
+                debug_lines.append(f"  ids_len={ids_len}")
+                debug_lines.append(
+                    f"  ids_first5={ids_first5} ids_last10={ids_last10}"
+                )
+                debug_lines.append(f"  toks_last10={toks_last10}")
+                debug_lines.append(f"  target_str_repr={repr(target_str)}")
+                debug_lines.append(
+                    "  target_id={} target_tok={}".format(
+                        target_id,
+                        repr(tokenizer.convert_ids_to_tokens(target_id)),
+                    )
+                )
+                match = target_id == answer_ids_first if answer_ids_first is not None else None
+                debug_lines.append(
+                    f"  answer_ids_first={answer_ids_first} match={match}"
+                )
+            for line in debug_lines:
+                print(line, flush=True)
+            debug_dir = os.path.join(PROJECT_ROOT, "runs", "stepd_fixed")
+            os.makedirs(debug_dir, exist_ok=True)
+            debug_path = os.path.join(debug_dir, "stepd_prompt_check.txt")
+            with open(debug_path, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(debug_lines) + "\n")
+            raise SystemExit(0)
+    elif args.successful_icl_only:
         while len(trials) < args.n_trials:
             if attempts >= args.max_trial_attempts:
                 log(
@@ -895,20 +1502,35 @@ def main() -> int:
 
     log("computing mean_activations")
     try:
-        mean_acts, dummy_labels, slot_index_map = compute_mean_activations_ns(
-            model=model,
-            tokenizer=tokenizer,
-            layer_modules=layer_modules,
-            pairs=pairs,
-            n_icl_examples=args.n_icl_examples,
-            n_mean_trials=args.n_mean_trials,
-            model_cfg=model_cfg,
-            seed=args.seed,
-            tok_add_special=tok_add_special,
-            device=device,
-            shuffle_labels=bool(args.shuffle_labels),
-            logger=log,
-        )
+        if fixed_trials is not None:
+            mean_acts, dummy_labels, slot_index_map = (
+                compute_mean_activations_fixed_trials_ns(
+                    model=model,
+                    tokenizer=tokenizer,
+                    layer_modules=layer_modules,
+                    fixed_trials=fixed_trials,
+                    n_use=args.n_mean_trials,
+                    model_cfg=model_cfg,
+                    tok_add_special=tok_add_special,
+                    device=device,
+                    logger=log,
+                )
+            )
+        else:
+            mean_acts, dummy_labels, slot_index_map = compute_mean_activations_ns(
+                model=model,
+                tokenizer=tokenizer,
+                layer_modules=layer_modules,
+                pairs=pairs,
+                n_icl_examples=args.n_icl_examples,
+                n_mean_trials=args.n_mean_trials,
+                model_cfg=model_cfg,
+                seed=args.seed,
+                tok_add_special=tok_add_special,
+                device=device,
+                shuffle_labels=bool(args.shuffle_labels),
+                logger=log,
+            )
     except ValueError as exc:
         log(str(exc))
         log_file.close()
@@ -961,6 +1583,11 @@ def main() -> int:
     )
     log(f"saved mean_activations meta: {mean_meta_path}")
 
+    if args.mean_only:
+        log("mean_only=1; exiting after mean_activations")
+        log_file.close()
+        return 0
+
     stepd_filter_path = os.path.join(artifacts_dir, "stepD_success_filter.json")
     save_json(
         stepd_filter_path,
@@ -992,6 +1619,36 @@ def main() -> int:
     trials_rows = []
     trial_metrics_path = os.path.join(artifacts_dir, "trial_metrics.jsonl")
     trial_metrics_file = open(trial_metrics_path, "w", encoding="utf-8")
+    dump_handle = None
+    dump_expected_keys = [
+        "trial_idx",
+        "layer",
+        "head",
+        "target_id",
+        "target_token",
+        "seed_global",
+        "n_icl_examples",
+        "p_base",
+        "p_patch",
+        "delta_p",
+        "logit_base",
+        "logit_patch",
+        "delta_logit",
+        "logprob_base",
+        "logprob_patch",
+        "delta_logprob",
+        "prompt_tail_repr",
+        "prompt_ends_with_space",
+        "seq_token_idx",
+        "ids_len",
+        "ids_last10",
+        "slot_idx",
+    ]
+    if args.dump_trial_metrics_jsonl:
+        dump_dir = os.path.dirname(args.dump_trial_metrics_jsonl)
+        if dump_dir:
+            os.makedirs(dump_dir, exist_ok=True)
+        dump_handle = open(args.dump_trial_metrics_jsonl, "w", encoding="utf-8")
 
     log("starting AIE sweep")
     try:
@@ -1141,6 +1798,46 @@ def main() -> int:
             }
             trial_metrics_file.write(json.dumps(trial_row, ensure_ascii=True) + "\n")
 
+            if dump_handle is not None:
+                if (args.dump_layer is None or args.dump_layer == layer) and (
+                    args.dump_head is None or args.dump_head == head
+                ):
+                    if args.dump_max_trials < 0 or trial["trial_idx"] < args.dump_max_trials:
+                        ids_list = inputs["input_ids"][0].tolist()
+                        dump_row = {
+                            "trial_idx": trial["trial_idx"],
+                            "layer": layer,
+                            "head": head,
+                            "target_id": target_id,
+                            "target_token": tokenizer.convert_ids_to_tokens(target_id),
+                            "seed_global": args.seed,
+                            "n_icl_examples": args.n_icl_examples,
+                            "p_base": trial_metrics["p_base"],
+                            "p_patch": trial_metrics["p_patch"],
+                            "delta_p": trial_metrics["delta_p"],
+                            "logit_base": trial_metrics["logit_base"],
+                            "logit_patch": trial_metrics["logit_patch"],
+                            "delta_logit": trial_metrics["delta_logit"],
+                            "logprob_base": trial_metrics["logprob_base"],
+                            "logprob_patch": trial_metrics["logprob_patch"],
+                            "delta_logprob": trial_metrics["delta_logprob"],
+                            "prompt_tail_repr": (
+                                repr(prefix_str[-60:]) if args.dump_include_prompt else ""
+                            ),
+                            "prompt_ends_with_space": prefix_str.endswith(" "),
+                            "seq_token_idx": seq_token_idx,
+                            "ids_len": len(ids_list),
+                            "ids_last10": ids_list[-10:],
+                            "slot_idx": slot_q,
+                        }
+                        if set(dump_row.keys()) != set(dump_expected_keys):
+                            missing = set(dump_expected_keys) - set(dump_row.keys())
+                            extra = set(dump_row.keys()) - set(dump_expected_keys)
+                            raise ValueError(
+                                f"dump keys mismatch missing={sorted(missing)} extra={sorted(extra)}"
+                            )
+                        dump_handle.write(json.dumps(dump_row, ensure_ascii=True) + "\n")
+
             if args.save_trials:
                 trials_rows.append(
                     {
@@ -1266,6 +1963,8 @@ def main() -> int:
 
     trial_metrics_file.close()
     log(f"saved trial metrics: {trial_metrics_path}")
+    if dump_handle is not None:
+        dump_handle.close()
 
     log_file.close()
     return 0
