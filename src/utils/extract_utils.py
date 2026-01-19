@@ -13,6 +13,40 @@ from .eval_utils import *
 
 
 # Attention Activations
+def _ensure_query_pred_slot(
+    idx_map,
+    dummy_labels,
+    token_labels,
+    tokenizer,
+    prompt_string,
+    model_config,
+):
+    query_slot = None
+    for slot_idx, label in dummy_labels:
+        if "query_predictive" in label:
+            query_slot = slot_idx
+            break
+    if query_slot is None:
+        return idx_map
+
+    if query_slot in idx_map.values():
+        return idx_map
+
+    prefix_ids = tokenizer(
+        prompt_string, add_special_tokens=model_config["prepend_bos"]
+    )["input_ids"]
+    if not prefix_ids:
+        return idx_map
+    prefix_last_idx = len(prefix_ids) - 1
+    decoded = tokenizer.decode([prefix_ids[-1]])
+    if decoded != ":":
+        warnings.warn(
+            f"QUERY_PRED fallback token not ':' (got {repr(decoded)}); continuing"
+        )
+    idx_map[prefix_last_idx] = query_slot
+    return idx_map
+
+
 def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer, model_config):
     """
     Collects activations for an ICL prompt 
@@ -37,6 +71,9 @@ def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer,
 
     inputs = tokenizer(sentence, return_tensors='pt').to(model.device)
     idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
+    idx_map = _ensure_query_pred_slot(
+        idx_map, dummy_labels, token_labels, tokenizer, prompt_string, model_config
+    )
 
     # Access Activations 
     with TraceDict(model, layers=layers, retain_input=True, retain_output=False) as td:                
@@ -208,11 +245,34 @@ def get_mean_head_activations_from_fixed_trials(
                 for layer in model_config["attn_hook_names"]
             ]
         ).permute(0, 2, 1, 3)
-        stack_filtered = stack_initial[:, :, list(idx_map.keys())]
-        for (i, j) in idx_avg.values():
-            stack_filtered[:, :, idx_map[i]] = stack_initial[:, :, i : j + 1].mean(axis=2)
 
-        activation_storage[n] = stack_filtered
+        idx_map_full = update_idx_map(idx_map, idx_avg)
+        n_slots = len(dummy_labels)
+        slot_acts = torch.zeros(
+            model_config["n_layers"],
+            model_config["n_heads"],
+            n_slots,
+            model_config["resid_dim"] // model_config["n_heads"],
+        )
+        empty_slots = 0
+        empty_slot_labels = []
+        for slot_i in range(n_slots):
+            token_idxs = [
+                tok_i for tok_i, slot in idx_map_full.items() if slot == slot_i
+            ]
+            if not token_idxs:
+                empty_slots += 1
+                empty_slot_labels.append(dummy_labels[slot_i][1])
+                continue
+            slot_acts[:, :, slot_i] = stack_initial[:, :, token_idxs].mean(axis=2)
+        if empty_slots:
+            warnings.warn(
+                "mean_activations: {} empty slots in trial {}: {}".format(
+                    empty_slots, n, ", ".join(empty_slot_labels)
+                )
+            )
+
+        activation_storage[n] = slot_acts
 
     mean_activations = activation_storage.mean(dim=0)
     return mean_activations, dummy_labels

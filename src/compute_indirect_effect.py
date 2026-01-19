@@ -1,4 +1,5 @@
 import os, re, json
+from pathlib import Path
 from tqdm import tqdm
 import torch, numpy as np
 import argparse
@@ -17,6 +18,16 @@ except ImportError:
     from utils.model_utils import *
     from utils.extract_utils import *
     from utils.fixed_trials_utils import load_fixed_trials, iter_fixed_trials
+
+try:
+    from fv.relation_trials import generate_relation_trials
+except ImportError:
+    import sys
+
+    _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if _ROOT not in sys.path:
+        sys.path.insert(0, _ROOT)
+    from fv.relation_trials import generate_relation_trials
 
 
 def activation_replacement_per_class_intervention(
@@ -321,6 +332,10 @@ if __name__ == "__main__":
     parser.add_argument('--separators', help='Prompt template separators to be used', type=json.loads, required=False, default={"input":"\n", "output":"\n\n", "instructions":""})    
     parser.add_argument('--revision', help='Specify model checkpoints for pythia or olmo models', type=str, required=False, default=None)
     parser.add_argument('--fixed_trials_path', help='Optional fixed_trials.json path', type=str, required=False, default=None)
+    parser.add_argument('--relation_csv_path', help='Relation CSV path (optional; uses relation trial generator)', type=str, required=False, default=None)
+    parser.add_argument('--relation_q_list', help='Comma-separated q list for relation trials (default: all)', type=str, required=False, default=None)
+    parser.add_argument('--relation_n_trials_per_q', help='Trials per q for relation CSV (required if relation_csv_path set)', type=int, required=False, default=None)
+    parser.add_argument('--relation_n_demos', help='Demos per trial for relation CSV (default: 10)', type=int, required=False, default=10)
     parser.add_argument('--dump_trial_metrics_jsonl', help='Optional JSONL path for trial metrics dump', type=str, required=False, default=None)
     parser.add_argument('--dump_max_trials', help='Max trials to dump (default: all)', type=int, required=False, default=-1)
     parser.add_argument('--dump_include_prompt', help='Include prompt tail repr in dump (1/0)', type=int, required=False, default=1)
@@ -336,7 +351,7 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     model_name = args.model_name
     root_data_dir = args.root_data_dir
-    save_path_root = f"{args.save_path_root}/{dataset_name}"
+    save_path_root = args.save_path_root
     seed = args.seed
     n_shots = args.n_shots
     n_trials = args.n_trials
@@ -347,6 +362,10 @@ if __name__ == "__main__":
     prefixes = args.prefixes
     separators = args.separators
     fixed_trials_path = args.fixed_trials_path
+    relation_csv_path = args.relation_csv_path
+    relation_q_list = args.relation_q_list
+    relation_n_trials_per_q = args.relation_n_trials_per_q
+    relation_n_demos = args.relation_n_demos
     dump_trial_metrics_jsonl = args.dump_trial_metrics_jsonl
     dump_max_trials = args.dump_max_trials
     dump_include_prompt = args.dump_include_prompt
@@ -365,10 +384,30 @@ if __name__ == "__main__":
 
     set_seed(seed)
 
+    if fixed_trials_path and relation_csv_path:
+        raise ValueError("Use either --fixed_trials_path or --relation_csv_path, not both.")
+
     fixed_trials = None
     if fixed_trials_path is not None:
         print("Loading Fixed Trials")
         fixed_trials = load_fixed_trials(fixed_trials_path)
+        if dataset_name is None:
+            dataset_name = Path(fixed_trials_path).stem
+    elif relation_csv_path is not None:
+        if not relation_n_trials_per_q:
+            raise ValueError("--relation_n_trials_per_q is required with --relation_csv_path")
+        tok_add_special = bool(model_config.get("prepend_bos"))
+        fixed_trials, _relation_stats = generate_relation_trials(
+            csv_path=relation_csv_path,
+            q_list=relation_q_list,
+            n_trials_per_q=int(relation_n_trials_per_q),
+            n_demos=int(relation_n_demos),
+            seed=seed,
+            tokenizer=tokenizer,
+            tok_add_special=tok_add_special,
+        )
+        if dataset_name is None:
+            dataset_name = Path(relation_csv_path).stem
     if debug_prompt_check:
         if fixed_trials is None:
             raise ValueError("debug_prompt_check requires --fixed_trials_path")
@@ -442,12 +481,15 @@ if __name__ == "__main__":
             handle.write("\n".join(debug_lines) + "\n")
         raise SystemExit(0)
 
-    if dataset_name is None:
-        raise ValueError("Missing --dataset_name")
+    if dataset_name is None and fixed_trials is None:
+        raise ValueError("Missing --dataset_name (or provide --fixed_trials_path / --relation_csv_path)")
 
-    # Load the dataset
-    print("Loading Dataset")
-    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
+    save_path_root = f"{save_path_root}/{dataset_name}"
+
+    dataset = None
+    if fixed_trials is None and dataset_name is not None:
+        print("Loading Dataset")
+        dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
 
     if not os.path.exists(save_path_root):
         os.makedirs(save_path_root)
@@ -455,13 +497,25 @@ if __name__ == "__main__":
     # Load or Re-Compute Mean Activations
     if mean_activations_path is not None and os.path.exists(mean_activations_path):
         mean_activations = torch.load(mean_activations_path)
-    elif mean_activations_path is None and os.path.exists(f'{save_path_root}/{dataset_name}_mean_head_activations.pt'):
+    elif mean_activations_path is None and dataset_name is not None and os.path.exists(f'{save_path_root}/{dataset_name}_mean_head_activations.pt'):
         mean_activations_path = f'{save_path_root}/{dataset_name}_mean_head_activations.pt'
         mean_activations = torch.load(mean_activations_path)
     else:
         print("Computing Mean Activations")
-        mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
-                                                     n_icl_examples=n_shots, N_TRIALS=n_trials, prefixes=prefixes, separators=separators)
+        if fixed_trials is not None:
+            mean_activations, _dummy_labels = get_mean_head_activations_from_fixed_trials(
+                fixed_trials,
+                model=model,
+                model_config=model_config,
+                tokenizer=tokenizer,
+                mode="corrupted",
+                n_use=n_trials,
+                prefixes=prefixes,
+                separators=separators,
+            )
+        else:
+            mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
+                                                         n_icl_examples=n_shots, N_TRIALS=n_trials, prefixes=prefixes, separators=separators)
         torch.save(mean_activations, f'{save_path_root}/{dataset_name}_mean_head_activations.pt')
 
     dump_handle = None

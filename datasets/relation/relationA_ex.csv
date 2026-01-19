@@ -1,0 +1,159 @@
+id,ex_A,ex_B
+Q1,chicken,egg
+Q1,Tree,fruit
+Q1,plant,seed
+Q1,Mold,Spore
+Q1,Fire,Spark
+Q1,Salmon,roe
+Q1,oak,acorn
+Q1,pine,cone
+Q1,wheat,grain
+Q1,fern,spore
+Q1,mushroom,spore
+Q3,spider,net
+Q3,bee,honeycomb
+Q3,silkworm,cocoon
+Q3,termite,mound
+Q3,snail,shell
+Q3,bird,nest
+Q3,beaver,lodge
+Q3,ant,Anthill
+Q3,Rabbit,burrow
+Q3,fox,den
+Q4,mom,baby
+Q4,lioness,cub
+Q4,wolf,pup
+Q4,elephant,calf
+Q4,polar bear,cub
+Q4,penguin,chick
+Q4,goose,gosling
+Q4,chimpanzee,infant
+Q4,eagle,eaglet
+Q4,chicken,chick
+Q4,cat,kitten
+Q4,dog,puppy
+Q5,pencil,eraser
+Q5,spacekey,backspace
+Q5,printer,shredder
+Q5,tape,scissors
+Q5,Chalk,Eraser
+Q5,lock,key
+Q5,Biceps,Triceps
+Q5,Brake,Accelerator
+Q5,Defense,Prosecution
+Q5,Washer,Dryer
+Q6,feet,human
+Q6,Fish,Fin
+Q6,Runne,Leg
+Q6,Horse,Hoof
+Q6,Swimmer,Arm
+Q6,Dog,Paw
+Q6,Sailboat,Sail
+Q6,Airplane,Wing
+Q6,Bicycle,Tire
+Q6,Drone,Propeller
+Q7,Headphones,Ears
+Q7,Earbuds,Ears
+Q7,Headset,Ears
+Q7,VR headset,Eyes
+Q7,Smart glasses,Eyes
+Q7,3D glasses,Eyes
+Q7,Contact lens,Eyes
+Q7,Smartwatch,Wrist
+Q7,Inhaler,Mouth
+Q7,Oxygen mask,Face
+Q7,Heat patch,Back
+Q8,cat,mice
+Q8,fox,rabbit
+Q8,lion,zebra
+Q8,wolf,sheep
+Q8,eagle,rabbit
+Q8,shark,fish
+Q8,cheetah,gazelle
+Q8,tiger,deer
+Q8,Falcon,Pigeon
+Q8,orca,seal
+Q9,paper,book
+Q9,brick,wall
+Q9,tile,roof
+Q9,plank,floor
+Q9,sheet,notebook
+Q9,branch,tree
+Q9,cell,tissue
+Q9,fiber,muscle
+Q9,bead,necklace
+Q9,thread,fabric
+Q10,Spider,Net
+Q10,Bird,Nest
+Q10,Beaver,Lodge
+Q10,Bee,Hive
+Q10,Termite,Mound
+Q10,Rabbit,Burrow
+Q10,Silkworm,Cocoon
+Q10,Inuit,Igloo
+Q10,Mole,Tunnel
+Q10,Nomad,Tent
+Q11,Bird,Feather
+Q11,Sheep,Wool
+Q11,Snake,Scales
+Q11,Turtle,Shell
+Q11,Bear,Fur
+Q11,Yak,Hair
+Q11,Tree,Bark
+Q11,Corn,Husk
+Q11,Banana,Peel
+Q11,Duck,Down
+Q11,Oyster,Shell
+Q12,Snail,Shell
+Q12,Turtle,Shell
+Q12,Hermit Crab,Sea shell
+Q12,Nomad,Tent
+Q12,Backpacker,Tent
+Q12,Camper,Trailer
+Q13,Egg,Chick
+Q13,Chrysalis,Butterfly
+Q13,Seed,Plant
+Q13,Bud,Flower
+Q13,Cocoon,Moth
+Q13,Kernel,Popcorn
+Q13,Rock,Gem
+Q13,Cloud,Rain
+Q13,Frogspawn,Tadpole
+Q13,Cotton boll,Cotton
+Q14,Lock,Key
+Q14,Corkscrew,Cork
+Q14,Can Opener,Can
+Q14,Seatbelt Buckle,Latch Plate
+Q14,Swipe Card,Electronic Door
+Q14,Crowbar,Crate
+Q14,Sim Card,Phone
+Q16,Hat,Head
+Q16,Helmet,Head
+Q16,Epaulette,Shoulder
+Q16,Wig,Head
+Q16,Turban,Hair
+Q16,Hood,Head
+Q16,Cap,Bottle
+Q16,Lens,Eye
+Q16,Phone Case,Phone
+Q16,Mattress,Bed
+Q17,Comb,Hair
+Q17,Broom,Dustpan
+Q17,Mascara Wand,Eyelashes
+Q17,Pitchfork,Hay
+Q17,Zen Rake,Sand
+Q17,Bore Brush,Gun Barrel
+Q17,Curry Comb,Horse
+Q17,Paintbrush,Canvas
+Q17,Windshield Wipers,Glass
+Q17,Nail Polish Brush,Nail
+Q18,Spider,Insect
+Q18,Frog,Fly
+Q18,Bear,Salmon
+Q18,Chameleon,Cricket
+Q18,Pelican,Fish
+Q18,Anteater,Ant
+Q18,Bat,Moth
+Q18,Fisherman,Fish
+Q18,Snake,Mouse
+Q18,Chicken,Worm
