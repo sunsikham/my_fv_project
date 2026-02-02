@@ -13,18 +13,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from transformers import AutoTokenizer
 
-try:
-    from src.utils.prompt_utils import (
-        compute_duplicated_labels as paper_compute_duplicated_labels,
-        get_dummy_token_labels as paper_get_dummy_token_labels,
-        get_token_meta_labels as paper_get_token_meta_labels,
-    )
-except ImportError:
-    from utils.prompt_utils import (
-        compute_duplicated_labels as paper_compute_duplicated_labels,
-        get_dummy_token_labels as paper_get_dummy_token_labels,
-        get_token_meta_labels as paper_get_token_meta_labels,
-    )
+from fv.prompting import (
+    compute_duplicated_labels as paper_compute_duplicated_labels,
+    get_dummy_token_labels as paper_get_dummy_token_labels,
+    get_token_meta_labels as paper_get_token_meta_labels,
+)
 from fv.slots import (
     build_prompt_segments,
     compute_duplicated_labels as stepd_compute_duplicated_labels,

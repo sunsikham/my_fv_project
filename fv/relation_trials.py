@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from fv.prompting import build_prompt_qa
-from src.utils.prompt_utils import word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data
+from .prompting import word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data
 
 
 DEFAULT_PREFIXES = {"input": "Q:", "output": "A:", "instructions": ""}

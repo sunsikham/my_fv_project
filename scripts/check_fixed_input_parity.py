@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.utils.prompt_utils import get_token_meta_labels as paper_get_token_meta_labels
+from fv.prompting import get_token_meta_labels as paper_get_token_meta_labels
 
 
 def main() -> int:

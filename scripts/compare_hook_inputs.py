@@ -9,11 +9,11 @@ from typing import Any, Dict
 
 import torch
 
+from fv.fixed_trials_adapter import gather_attn_activations
 from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.hooks import get_out_proj_pre_hook_target
-from src.utils.extract_utils import gather_attn_activations
-from src.utils.model_utils import load_gpt_model_and_tokenizer
-from src.utils.prompt_utils import get_dummy_token_labels, get_token_meta_labels
+from fv.model_spec import get_model_spec
+from fv.prompting import get_dummy_token_labels, get_token_meta_labels
 
 EPS = 1e-12
 
@@ -76,10 +76,27 @@ def main() -> int:
         raise ValueError("fixed_trials missing prompt_data_clean")
 
     # Paper pipeline: load model/tokenizer and capture out_proj input via TraceDict.
-    paper_model, paper_tokenizer, paper_cfg = load_gpt_model_and_tokenizer(
-        args.model_name, device=args.paper_device
+    paper_model, paper_tokenizer, _diag = load_hf_model_and_tokenizer(
+        model_name=args.model_name,
+        model_spec=args.stepd_model_spec,
+        device=args.paper_device,
+        dtype=None,
+        quant="none",
+        device_map=None,
     )
     paper_model.eval()
+
+    spec = get_model_spec(args.stepd_model_spec)
+    paper_cfg = {
+        "n_layers": spec.n_layers,
+        "n_heads": spec.n_heads,
+        "resid_dim": spec.hidden_size,
+        "attn_hook_names": [
+            f"{spec.blocks_path}.{i}.{spec.attn_path_in_block}.{spec.out_proj_path_in_attn}"
+            for i in range(spec.n_layers)
+        ],
+        "prepend_bos": spec.prepend_bos,
+    }
 
     n_icl_examples = len(prompt_data.get("examples", []))
     dummy_labels = get_dummy_token_labels(

@@ -1,11 +1,16 @@
 import json
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
+from typing import Iterator, Optional, Tuple, Union
 
 import torch
+from baukit import TraceDict
 
-from src.utils.prompt_utils import create_prompt, get_dummy_token_labels
-from src.utils.extract_utils import gather_attn_activations
+from fv.prompting import (
+    compute_duplicated_labels,
+    create_prompt,
+    get_dummy_token_labels,
+    get_token_meta_labels,
+)
 
 
 def load_fixed_trials(path: Union[str, Path]) -> dict:
@@ -47,6 +52,57 @@ def _resolve_prefixes_separators(
     if use_separators is None:
         use_separators = prompt_data.get("separators")
     return use_prefixes, use_separators
+
+
+def _ensure_query_pred_slot(
+    idx_map,
+    dummy_labels,
+    token_labels,
+    tokenizer,
+    prompt_string,
+    model_config,
+):
+    query_slot = None
+    for slot_idx, label in dummy_labels:
+        if "query_predictive" in label:
+            query_slot = slot_idx
+            break
+    if query_slot is None:
+        return idx_map
+
+    if query_slot in idx_map.values():
+        return idx_map
+
+    prefix_ids = tokenizer(
+        prompt_string, add_special_tokens=model_config["prepend_bos"]
+    )["input_ids"]
+    if not prefix_ids:
+        return idx_map
+    prefix_last_idx = len(prefix_ids) - 1
+    decoded = tokenizer.decode([prefix_ids[-1]])
+    if decoded != ":":
+        return idx_map
+    idx_map[prefix_last_idx] = query_slot
+    return idx_map
+
+
+def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer, model_config):
+    query = prompt_data["query_target"]["input"]
+    token_labels, prompt_string = get_token_meta_labels(
+        prompt_data, tokenizer, query, prepend_bos=model_config["prepend_bos"]
+    )
+    sentence = [prompt_string]
+
+    inputs = tokenizer(sentence, return_tensors="pt").to(model.device)
+    idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
+    idx_map = _ensure_query_pred_slot(
+        idx_map, dummy_labels, token_labels, tokenizer, prompt_string, model_config
+    )
+
+    with TraceDict(model, layers=layers, retain_input=True, retain_output=False) as td:
+        model(**inputs)
+
+    return td, idx_map, idx_avg
 
 
 def get_mean_head_activations_from_fixed_trials_paper_exact(

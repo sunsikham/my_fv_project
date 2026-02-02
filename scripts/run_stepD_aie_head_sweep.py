@@ -27,19 +27,18 @@ from fv.mean_activations import (
 )
 from fv.model_spec import get_model_spec
 from fv.patch import make_out_proj_head_output_overrider
-from fv.prompting import build_prompt_qa
+from fv.prompting import (
+    build_prompt_qa_paper,
+    compute_duplicated_labels as paper_compute_duplicated_labels,
+    get_dummy_token_labels as paper_get_dummy_token_labels,
+    get_token_meta_labels as paper_get_token_meta_labels,
+)
 from fv.slots import (
     compute_query_predictive_slot,
     resolve_slot_seq_token_idx,
     get_target_first_token_id_from_boundary,
 )
 from fv.mean_activations import paper_labels_to_slot_map
-from src.utils.prompt_utils import (
-    compute_duplicated_labels as paper_compute_duplicated_labels,
-    get_dummy_token_labels as paper_get_dummy_token_labels,
-    get_token_meta_labels as paper_get_token_meta_labels,
-    word_pairs_to_prompt_data as paper_word_pairs_to_prompt_data,
-)
 from fv.relation_trials import generate_relation_trials, save_trials_json
 
 
@@ -230,7 +229,7 @@ def run_stepd_debug(
         )
         demos_norm = _normalize_demos(demos)
         query_norm = _normalize_query(query)
-        prefix_str, full_str = build_prompt_qa(
+        prefix_str, full_str, _prompt_data = build_prompt_qa_paper(
             demos_norm,
             query_norm,
             prefixes=prompt_meta["prefixes"],
@@ -477,13 +476,13 @@ def compute_trial_idx_map(
     prompt_data=None,
 ):
     if prompt_data is None:
-        word_pairs = {"input": [x for x, _y in demos], "output": [y for _x, y in demos]}
-        query_target_pair = {"input": [query[0]], "output": [query[1]]}
-        prompt_data = paper_word_pairs_to_prompt_data(
-            word_pairs,
-            query_target_pair=query_target_pair,
+        _prefix_str, _full_str, prompt_data = build_prompt_qa_paper(
+            demos,
+            query,
+            prefixes=None,
+            separators=None,
             prepend_bos_token=not tok_add_special,
-            shuffle_labels=False,
+            prepend_space=True,
         )
 
     token_labels, prompt_string = paper_get_token_meta_labels(
@@ -1246,7 +1245,7 @@ def main() -> int:
                 log(f"fixed_trials missing prompt strings at trial {trial_idx}")
                 log_file.close()
                 return 1
-            clean_prefix_str, _clean_full_str = build_prompt_qa(
+            clean_prefix_str, _clean_full_str, _prompt_data = build_prompt_qa_paper(
                 demos_clean_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1254,7 +1253,7 @@ def main() -> int:
                 prepend_bos_token=prompt_meta["prepend_bos_token_used"],
                 prepend_space=True,
             )
-            corrupted_prefix_str, _tmp_full_str = build_prompt_qa(
+            corrupted_prefix_str, _tmp_full_str, _prompt_data = build_prompt_qa_paper(
                 demos_corrupted_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1461,7 +1460,7 @@ def main() -> int:
                 demos = demos_orig
             demos_norm = _normalize_demos(demos)
             query_norm = _normalize_query(query)
-            clean_prefix_str, clean_full_str = build_prompt_qa(
+            clean_prefix_str, clean_full_str, _prompt_data = build_prompt_qa_paper(
                 demos_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1510,7 +1509,7 @@ def main() -> int:
                     corrupted_demos, demo_perm
                 )
             corrupted_demos_norm = _normalize_demos(corrupted_demos)
-            corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
+            corrupted_prefix_str, corrupted_full_str, prompt_data_corrupted = build_prompt_qa_paper(
                 corrupted_demos_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1537,18 +1536,6 @@ def main() -> int:
                 log("target_id mismatch between clean and corrupted")
                 log_file.close()
                 return 1
-            prompt_data_corrupted = paper_word_pairs_to_prompt_data(
-                {
-                    "input": [x for x, _y in corrupted_demos_norm],
-                    "output": [y for _x, y in corrupted_demos_norm],
-                },
-                query_target_pair={"input": [query_norm[0]], "output": [query_norm[1]]},
-                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
-                prefixes=prompt_meta["prefixes"],
-                separators=prompt_meta["separators"],
-                shuffle_labels=False,
-                prepend_space=True,
-            )
             try:
                 (
                     idx_map,
@@ -1677,7 +1664,7 @@ def main() -> int:
                 demos = demos_orig
             demos_norm = _normalize_demos(demos)
             query_norm = _normalize_query(query)
-            clean_prefix_str, clean_full_str = build_prompt_qa(
+            clean_prefix_str, clean_full_str, _prompt_data = build_prompt_qa_paper(
                 demos_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1693,7 +1680,7 @@ def main() -> int:
                     corrupted_demos, demo_perm
                 )
             corrupted_demos_norm = _normalize_demos(corrupted_demos)
-            corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
+            corrupted_prefix_str, corrupted_full_str, prompt_data_corrupted = build_prompt_qa_paper(
                 corrupted_demos_norm,
                 query_norm,
                 prefixes=prompt_meta["prefixes"],
@@ -1737,18 +1724,6 @@ def main() -> int:
                 log_file.close()
                 return 1
 
-            prompt_data_corrupted = paper_word_pairs_to_prompt_data(
-                {
-                    "input": [x for x, _y in corrupted_demos_norm],
-                    "output": [y for _x, y in corrupted_demos_norm],
-                },
-                query_target_pair={"input": [query_norm[0]], "output": [query_norm[1]]},
-                prepend_bos_token=prompt_meta["prepend_bos_token_used"],
-                prefixes=prompt_meta["prefixes"],
-                separators=prompt_meta["separators"],
-                shuffle_labels=False,
-                prepend_space=True,
-            )
             try:
                 (
                     idx_map,

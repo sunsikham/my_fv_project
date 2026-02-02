@@ -14,7 +14,7 @@ from .slots import (
     segments_to_text_and_spans,
     validate_idx_map,
 )
-from src.utils.prompt_utils import (
+from .prompting import (
     compute_duplicated_labels as paper_compute_duplicated_labels,
     get_dummy_token_labels as paper_get_dummy_token_labels,
     get_token_meta_labels as paper_get_token_meta_labels,
