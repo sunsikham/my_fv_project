@@ -54,38 +54,6 @@ def _resolve_prefixes_separators(
     return use_prefixes, use_separators
 
 
-def _ensure_query_pred_slot(
-    idx_map,
-    dummy_labels,
-    token_labels,
-    tokenizer,
-    prompt_string,
-    model_config,
-):
-    query_slot = None
-    for slot_idx, label in dummy_labels:
-        if "query_predictive" in label:
-            query_slot = slot_idx
-            break
-    if query_slot is None:
-        return idx_map
-
-    if query_slot in idx_map.values():
-        return idx_map
-
-    prefix_ids = tokenizer(
-        prompt_string, add_special_tokens=model_config["prepend_bos"]
-    )["input_ids"]
-    if not prefix_ids:
-        return idx_map
-    prefix_last_idx = len(prefix_ids) - 1
-    decoded = tokenizer.decode([prefix_ids[-1]])
-    if decoded != ":":
-        return idx_map
-    idx_map[prefix_last_idx] = query_slot
-    return idx_map
-
-
 def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer, model_config):
     query = prompt_data["query_target"]["input"]
     token_labels, prompt_string = get_token_meta_labels(
@@ -95,9 +63,6 @@ def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer,
 
     inputs = tokenizer(sentence, return_tensors="pt").to(model.device)
     idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
-    idx_map = _ensure_query_pred_slot(
-        idx_map, dummy_labels, token_labels, tokenizer, prompt_string, model_config
-    )
 
     with TraceDict(model, layers=layers, retain_input=True, retain_output=False) as td:
         model(**inputs)

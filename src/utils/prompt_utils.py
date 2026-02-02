@@ -235,8 +235,8 @@ def get_dummy_token_labels(n_icl_examples, tokenizer, model_config, prefixes=Non
     Return:
     final_token_labels: list of tuples containing a token's index and label name [(int, str), ... ]
     """
-    # If the model already prepends a bos token by default, we don't want to add one to our prompts
-    prepend_bos =  False if model_config['prepend_bos'] else True
+    # BOS SSOT: do not inject BOS string in dummy prompts
+    prepend_bos = False
 
     if prefixes is not None and separators is not None:
         dummy_prompt_data = word_pairs_to_prompt_data({'input': ['a']*n_icl_examples, 'output':['a']*n_icl_examples}, 

@@ -318,7 +318,8 @@ def get_token_meta_labels(prompt_data, tokenizer, query=None, prepend_bos: bool 
 
 
 def get_dummy_token_labels(n_icl_examples, tokenizer, model_config, prefixes=None, separators=None):
-    prepend_bos = False if model_config["prepend_bos"] else True
+    # BOS SSOT: do not inject BOS string in dummy prompts
+    prepend_bos = False
     if prefixes is not None and separators is not None:
         dummy_prompt_data = word_pairs_to_prompt_data(
             {"input": ["a"] * n_icl_examples, "output": ["a"] * n_icl_examples},
