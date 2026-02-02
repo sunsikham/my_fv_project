@@ -1,0 +1,185 @@
+q_id,trial_index,demo_relation_path,query_relation_path,n_demos,query_input,target_str,target_first_token_id,target_token_str,target_logit,target_logprob,prompt_len_tokens,seed,demo_mode,trial_idx,demo_ids,repeated_demo_id
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,bear,cub,66,c,-97.20645141601562,-11.378448486328125,16,0,standard,0,[6],
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,bear,cub,66,c,-97.20645141601562,-11.378448486328125,16,0,repeated_oneshot,0,[6],6
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,bear,cub,66,c,-100.38957214355469,-11.729743957519531,15,0,standard,1,[0],
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,bear,cub,66,c,-100.38957214355469,-11.729743957519531,15,0,repeated_oneshot,1,[0],0
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,bear,cub,66,c,-96.22759246826172,-11.876782417297363,34,0,standard,0,"[8, 7, 6]",
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,bear,cub,66,c,-72.52788543701172,-10.101790428161621,33,0,repeated_oneshot,0,"[7, 7, 7]",7
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,bear,cub,66,c,-86.92595672607422,-11.457115173339844,35,0,standard,1,"[7, 5, 3]",
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,bear,cub,66,c,-76.76765441894531,-9.621280670166016,36,0,repeated_oneshot,1,"[3, 3, 3]",3
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,bear,cub,66,c,-89.2136459350586,-12.222358703613281,101,0,standard,0,"[2, 4, 10, 1, 9, 8, 6, 7, 3, 0]",
+Q1,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,bear,cub,66,c,-62.75868225097656,-8.682178497314453,96,0,repeated_oneshot,0,"[4, 4, 4, 4, 4, 4, 4, 4, 4, 4]",4
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,bear,cub,66,c,-91.5465316772461,-12.392874717712402,102,0,standard,1,"[10, 5, 7, 1, 2, 3, 6, 8, 4, 9]",
+Q1,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,bear,cub,66,c,-83.10208892822266,-11.079304695129395,96,0,repeated_oneshot,1,"[8, 8, 8, 8, 8, 8, 8, 8, 8, 8]",8
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-95.67717742919922,-11.304539680480957,15,0,standard,0,[92],
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-95.67717742919922,-11.304539680480957,15,0,repeated_oneshot,0,[92],92
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-91.18867492675781,-11.356308937072754,15,0,standard,1,[84],
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-91.18867492675781,-11.356308937072754,15,0,repeated_oneshot,1,[84],84
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-88.76417541503906,-10.96447467803955,35,0,standard,0,"[85, 90, 84]",
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-77.15528106689453,-11.248994827270508,33,0,repeated_oneshot,0,"[84, 84, 84]",84
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-88.84033966064453,-10.541006088256836,37,0,standard,1,"[91, 89, 87]",
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-74.56111145019531,-10.405027389526367,33,0,repeated_oneshot,1,"[87, 87, 87]",87
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-95.4949722290039,-12.02936840057373,105,0,standard,0,"[89, 85, 87, 88, 92, 93, 90, 86, 91, 84]",
+Q10,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-245.0922393798828,-16.22446060180664,96,0,repeated_oneshot,0,"[85, 85, 85, 85, 85, 85, 85, 85, 85, 85]",85
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-91.16062927246094,-11.362679481506348,105,0,standard,1,"[89, 92, 91, 84, 86, 88, 93, 87, 90, 85]",
+Q10,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-79.8097915649414,-10.349339485168457,116,0,repeated_oneshot,1,"[90, 90, 90, 90, 90, 90, 90, 90, 90, 90]",90
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Antennae,Ant,13217,Ant,-99.56620788574219,-12.259957313537598,17,0,standard,0,[97],
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Antennae,Ant,13217,Ant,-99.56620788574219,-12.259957313537598,17,0,repeated_oneshot,0,[97],97
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Antennae,Ant,13217,Ant,-99.29524230957031,-12.349822044372559,18,0,standard,1,[101],
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Antennae,Ant,13217,Ant,-99.29524230957031,-12.349822044372559,18,0,repeated_oneshot,1,[101],101
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Antennae,Ant,13217,Ant,-103.81404876708984,-12.628938674926758,35,0,standard,0,"[103, 100, 99]",
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Antennae,Ant,13217,Ant,-85.6178207397461,-9.099717140197754,35,0,repeated_oneshot,0,"[99, 99, 99]",99
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Antennae,Ant,13217,Ant,-100.64220428466797,-12.229434967041016,36,0,standard,1,"[97, 98, 96]",
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Antennae,Ant,13217,Ant,-86.17781829833984,-10.491776466369629,35,0,repeated_oneshot,1,"[97, 97, 97]",97
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Antennae,Ant,13217,Ant,-107.27057647705078,-14.150409698486328,101,0,standard,0,"[96, 94, 98, 101, 103, 100, 95, 102, 99, 104]",
+Q11,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Antennae,Ant,13217,Ant,-80.88368225097656,-8.568129539489746,98,0,repeated_oneshot,0,"[99, 99, 99, 99, 99, 99, 99, 99, 99, 99]",99
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Antennae,Ant,13217,Ant,-110.10224151611328,-13.689621925354004,101,0,standard,1,"[104, 100, 102, 98, 101, 95, 99, 97, 96, 103]",
+Q11,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Antennae,Ant,13217,Ant,-79.85334014892578,-9.672709465026855,98,0,repeated_oneshot,1,"[97, 97, 97, 97, 97, 97, 97, 97, 97, 97]",97
+Q12,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-91.55842590332031,-11.126824378967285,16,0,standard,0,[108],
+Q12,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-91.55842590332031,-11.126824378967285,16,0,repeated_oneshot,0,[108],108
+Q12,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-97.9795913696289,-11.914103507995605,16,0,standard,1,[105],
+Q12,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-97.9795913696289,-11.914103507995605,16,0,repeated_oneshot,1,[105],105
+Q12,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-70.51203155517578,-12.218880653381348,37,0,standard,0,"[109, 105, 108]",
+Q12,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-80.95262145996094,-10.708553314208984,36,0,repeated_oneshot,0,"[108, 108, 108]",108
+Q12,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-92.76348114013672,-11.46043586730957,37,0,standard,1,"[110, 107, 106]",
+Q12,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-79.19017028808594,-9.87761116027832,36,0,repeated_oneshot,1,"[110, 110, 110]",110
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Boy,Man,5124,Man,-130.78526306152344,-14.822813034057617,15,0,standard,0,[111],
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Boy,Man,5124,Man,-130.78526306152344,-14.822813034057617,15,0,repeated_oneshot,0,[111],111
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Boy,Man,5124,Man,-101.5605239868164,-14.397176742553711,16,0,standard,1,[112],
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Boy,Man,5124,Man,-101.5605239868164,-14.397176742553711,16,0,repeated_oneshot,1,[112],112
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Boy,Man,5124,Man,-89.9336929321289,-13.977115631103516,36,0,standard,0,"[116, 113, 120]",
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Boy,Man,5124,Man,-89.26058197021484,-10.72795295715332,33,0,repeated_oneshot,0,"[113, 113, 113]",113
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Boy,Man,5124,Man,-104.84265899658203,-15.308623313903809,34,0,standard,1,"[111, 112, 113]",
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Boy,Man,5124,Man,-89.26058197021484,-10.72795295715332,33,0,repeated_oneshot,1,"[113, 113, 113]",113
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Boy,Man,5124,Man,-95.71704864501953,-14.77418041229248,104,0,standard,0,"[114, 111, 112, 119, 117, 118, 116, 115, 120, 113]",
+Q13,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Boy,Man,5124,Man,-91.51640319824219,-12.055645942687988,96,0,repeated_oneshot,0,"[111, 111, 111, 111, 111, 111, 111, 111, 111, 111]",111
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Boy,Man,5124,Man,-102.867919921875,-14.982259750366211,104,0,standard,1,"[111, 120, 114, 112, 116, 119, 118, 115, 113, 117]",
+Q13,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Boy,Man,5124,Man,-84.5304946899414,-10.374472618103027,96,0,repeated_oneshot,1,"[113, 113, 113, 113, 113, 113, 113, 113, 113, 113]",113
+Q14,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Buckle,Belt,33,B,-101.76541137695312,-11.59351634979248,21,0,standard,0,[124],
+Q14,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Buckle,Belt,33,B,-101.76541137695312,-11.59351634979248,21,0,repeated_oneshot,0,[124],124
+Q14,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Buckle,Belt,33,B,-100.08808898925781,-10.391292572021484,17,0,standard,1,[127],
+Q14,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Buckle,Belt,33,B,-100.08808898925781,-10.391292572021484,17,0,repeated_oneshot,1,[127],127
+Q14,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Buckle,Belt,33,B,-88.54273223876953,-9.898235321044922,37,0,standard,0,"[121, 122, 127]",
+Q14,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Buckle,Belt,33,B,-91.40045928955078,-9.123735427856445,37,0,repeated_oneshot,0,"[127, 127, 127]",127
+Q14,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Buckle,Belt,33,B,-102.74763488769531,-10.860685348510742,42,0,standard,1,"[123, 127, 124]",
+Q14,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Buckle,Belt,33,B,-101.239990234375,-9.489203453063965,40,0,repeated_oneshot,1,"[123, 123, 123]",123
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Earmuffs,Ears,36,E,-103.51851654052734,-10.881370544433594,17,0,standard,0,[128],
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Earmuffs,Ears,36,E,-103.51851654052734,-10.881370544433594,17,0,repeated_oneshot,0,[128],128
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Earmuffs,Ears,36,E,-103.51851654052734,-10.881370544433594,17,0,standard,1,[128],
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Earmuffs,Ears,36,E,-103.51851654052734,-10.881370544433594,17,0,repeated_oneshot,1,[128],128
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Earmuffs,Ears,36,E,-94.88971710205078,-11.511969566345215,37,0,standard,0,"[134, 131, 132]",
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Earmuffs,Ears,36,E,-98.3990707397461,-8.600503921508789,38,0,repeated_oneshot,0,"[131, 131, 131]",131
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Earmuffs,Ears,36,E,-103.89892578125,-10.822938919067383,39,0,standard,1,"[135, 130, 131]",
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Earmuffs,Ears,36,E,-96.0031509399414,-7.663272857666016,35,0,repeated_oneshot,1,"[135, 135, 135]",135
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Earmuffs,Ears,36,E,-102.64564514160156,-10.655369758605957,105,0,standard,0,"[130, 137, 133, 132, 136, 128, 131, 135, 134, 129]",
+Q16,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Earmuffs,Ears,36,E,-90.66521453857422,-7.178591728210449,98,0,repeated_oneshot,0,"[135, 135, 135, 135, 135, 135, 135, 135, 135, 135]",135
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Earmuffs,Ears,36,E,-101.31842803955078,-11.008722305297852,105,0,standard,1,"[134, 136, 132, 133, 130, 131, 137, 128, 135, 129]",
+Q16,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Earmuffs,Ears,36,E,-82.1661605834961,-6.348827362060547,108,0,repeated_oneshot,1,"[136, 136, 136, 136, 136, 136, 136, 136, 136, 136]",136
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bow,Arrow,3163,Ar,-101.68840026855469,-13.125289916992188,17,0,standard,0,[143],
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bow,Arrow,3163,Ar,-101.68840026855469,-13.125289916992188,17,0,repeated_oneshot,0,[143],143
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bow,Arrow,3163,Ar,-98.10897064208984,-12.491941452026367,18,0,standard,1,[146],
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bow,Arrow,3163,Ar,-98.10897064208984,-12.491941452026367,18,0,repeated_oneshot,1,[146],146
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bow,Arrow,3163,Ar,-90.07254791259766,-13.105924606323242,41,0,standard,0,"[140, 141, 145]",
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bow,Arrow,3163,Ar,-73.47277069091797,-10.669438362121582,36,0,repeated_oneshot,0,"[141, 141, 141]",141
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bow,Arrow,3163,Ar,-95.02064514160156,-12.98524284362793,41,0,standard,1,"[147, 142, 143]",
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bow,Arrow,3163,Ar,-94.66039276123047,-12.234915733337402,39,0,repeated_oneshot,1,"[143, 143, 143]",143
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bow,Arrow,3163,Ar,-85.11526489257812,-13.840290069580078,118,0,standard,0,"[147, 140, 142, 141, 143, 144, 138, 145, 146, 139]",
+Q17,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bow,Arrow,3163,Ar,-84.87438201904297,-10.526086807250977,116,0,repeated_oneshot,0,"[142, 142, 142, 142, 142, 142, 142, 142, 142, 142]",142
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bow,Arrow,3163,Ar,-86.58625030517578,-13.427315711975098,118,0,standard,1,"[141, 147, 145, 146, 143, 142, 144, 138, 139, 140]",
+Q17,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bow,Arrow,3163,Ar,-76.58141326904297,-10.405014038085938,106,0,repeated_oneshot,1,"[141, 141, 141, 141, 141, 141, 141, 141, 141, 141]",141
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,baby,milk,25433,mil,-101.62361907958984,-12.736577033996582,15,0,standard,0,[150],
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,baby,milk,25433,mil,-101.62361907958984,-12.736577033996582,15,0,repeated_oneshot,0,[150],150
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,baby,milk,25433,mil,-112.00420379638672,-13.71566104888916,15,0,standard,1,[149],
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,baby,milk,25433,mil,-112.00420379638672,-13.71566104888916,15,0,repeated_oneshot,1,[149],149
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,baby,milk,25433,mil,-103.1361312866211,-14.733612060546875,34,0,standard,0,"[150, 155, 156]",
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,baby,milk,25433,mil,-87.95024871826172,-13.26446533203125,33,0,repeated_oneshot,0,"[156, 156, 156]",156
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,baby,milk,25433,mil,-96.09361267089844,-13.795162200927734,33,0,standard,1,"[157, 148, 156]",
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,baby,milk,25433,mil,-79.19717407226562,-14.27595329284668,33,0,repeated_oneshot,1,"[148, 148, 148]",148
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,baby,milk,25433,mil,-87.13333129882812,-13.6320219039917,103,0,standard,0,"[153, 152, 155, 148, 151, 149, 154, 150, 157, 156]",
+Q18,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,baby,milk,25433,mil,-79.11446380615234,-12.344823837280273,106,0,repeated_oneshot,0,"[154, 154, 154, 154, 154, 154, 154, 154, 154, 154]",154
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,baby,milk,25433,mil,-86.89473724365234,-13.90328311920166,103,0,standard,1,"[154, 153, 148, 149, 155, 156, 152, 151, 150, 157]",
+Q18,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,baby,milk,25433,mil,-74.09906005859375,-12.42287540435791,106,0,repeated_oneshot,1,"[155, 155, 155, 155, 155, 155, 155, 155, 155, 155]",155
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-89.70122528076172,-13.596175193786621,15,0,standard,0,[15],
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-89.70122528076172,-13.596175193786621,15,0,repeated_oneshot,0,[15],15
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-83.12338256835938,-11.971288681030273,16,0,standard,1,[12],
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Cage,34,C,-83.12338256835938,-11.971288681030273,16,0,repeated_oneshot,1,[12],12
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-81.60201263427734,-12.78259563446045,35,0,standard,0,"[17, 12, 11]",
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-70.30409240722656,-11.485525131225586,36,0,repeated_oneshot,0,"[12, 12, 12]",12
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-82.00000762939453,-12.73416805267334,35,0,standard,1,"[18, 12, 15]",
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Cage,34,C,-63.42384338378906,-10.198615074157715,36,0,repeated_oneshot,1,"[18, 18, 18]",18
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-82.01849365234375,-12.272234916687012,103,0,standard,0,"[19, 16, 12, 17, 18, 13, 11, 14, 15, 20]",
+Q3,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-57.49673080444336,-9.588996887207031,106,0,repeated_oneshot,0,"[18, 18, 18, 18, 18, 18, 18, 18, 18, 18]",18
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-80.56407928466797,-11.56170654296875,103,0,standard,1,"[19, 16, 20, 15, 11, 17, 14, 13, 12, 18]",
+Q3,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Cage,34,C,-67.89298248291016,-11.257993698120117,106,0,repeated_oneshot,1,"[17, 17, 17, 17, 17, 17, 17, 17, 17, 17]",17
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Garden,Plants,3646,Pl,-91.33068084716797,-15.692822456359863,17,0,standard,0,[29],
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Garden,Plants,3646,Pl,-91.33068084716797,-15.692822456359863,17,0,repeated_oneshot,0,[29],29
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Garden,Plants,3646,Pl,-93.08020782470703,-16.211017608642578,15,0,standard,1,[24],
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Garden,Plants,3646,Pl,-93.08020782470703,-16.211017608642578,15,0,repeated_oneshot,1,[24],24
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Garden,Plants,3646,Pl,-93.10697937011719,-14.993435859680176,34,0,standard,0,"[30, 25, 21]",
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Garden,Plants,3646,Pl,-79.36408233642578,-13.147113800048828,33,0,repeated_oneshot,0,"[30, 30, 30]",30
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Garden,Plants,3646,Pl,-88.30876922607422,-14.526714324951172,35,0,standard,1,"[23, 25, 26]",
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Garden,Plants,3646,Pl,-81.17357635498047,-13.311379432678223,36,0,repeated_oneshot,1,"[25, 25, 25]",25
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Garden,Plants,3646,Pl,-85.37303161621094,-14.92717170715332,103,0,standard,0,"[26, 22, 32, 21, 29, 23, 31, 30, 27, 25]",
+Q4,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Garden,Plants,3646,Pl,-72.02303314208984,-12.827805519104004,96,0,repeated_oneshot,0,"[31, 31, 31, 31, 31, 31, 31, 31, 31, 31]",31
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Garden,Plants,3646,Pl,-86.19352722167969,-14.636258125305176,102,0,standard,1,"[29, 23, 25, 22, 28, 26, 32, 21, 31, 30]",
+Q4,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Garden,Plants,3646,Pl,-72.02303314208984,-12.827805519104004,96,0,repeated_oneshot,1,"[31, 31, 31, 31, 31, 31, 31, 31, 31, 31]",31
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Drought,Rain,31443,Rain,-103.07942962646484,-15.405253410339355,18,0,standard,0,[34],
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Drought,Rain,31443,Rain,-103.07942962646484,-15.405253410339355,18,0,repeated_oneshot,0,[34],34
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Drought,Rain,31443,Rain,-128.93801879882812,-15.423137664794922,18,0,standard,1,[39],
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Drought,Rain,31443,Rain,-128.93801879882812,-15.423137664794922,18,0,repeated_oneshot,1,[39],39
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Drought,Rain,31443,Rain,-97.60052490234375,-16.268173217773438,40,0,standard,0,"[37, 39, 34]",
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Drought,Rain,31443,Rain,-83.56459045410156,-13.499950408935547,40,0,repeated_oneshot,0,"[37, 37, 37]",37
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Drought,Rain,31443,Rain,-105.11234283447266,-14.608861923217773,39,0,standard,1,"[41, 40, 42]",
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Drought,Rain,31443,Rain,-94.3302993774414,-15.675346374511719,40,0,repeated_oneshot,1,"[40, 40, 40]",40
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Drought,Rain,31443,Rain,-82.18948364257812,-13.793020248413086,110,0,standard,0,"[38, 34, 40, 33, 42, 36, 37, 39, 41, 35]",
+Q5,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Drought,Rain,31443,Rain,-92.61690521240234,-14.320368766784668,117,0,repeated_oneshot,0,"[40, 40, 40, 40, 40, 40, 40, 40, 40, 40]",40
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Drought,Rain,31443,Rain,-89.43695068359375,-14.240179061889648,110,0,standard,1,"[35, 39, 34, 33, 41, 40, 37, 38, 36, 42]",
+Q5,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Drought,Rain,31443,Rain,-113.58768463134766,-14.232647895812988,117,0,repeated_oneshot,1,"[39, 39, 39, 39, 39, 39, 39, 39, 39, 39]",39
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Beak,3856,Be,-83.01315307617188,-12.342011451721191,16,0,standard,0,[49],
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Beak,3856,Be,-83.01315307617188,-12.342011451721191,16,0,repeated_oneshot,0,[49],49
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Beak,3856,Be,-86.3818130493164,-12.54177474975586,16,0,standard,1,[50],
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Bird,Beak,3856,Be,-86.3818130493164,-12.54177474975586,16,0,repeated_oneshot,1,[50],50
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Beak,3856,Be,-92.30357360839844,-12.048650741577148,37,0,standard,0,"[52, 46, 49]",
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Beak,3856,Be,-76.45989990234375,-12.194398880004883,39,0,repeated_oneshot,0,"[52, 52, 52]",52
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Beak,3856,Be,-99.57282257080078,-12.634902000427246,35,0,standard,1,"[48, 46, 47]",
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Bird,Beak,3856,Be,-80.72438049316406,-11.757543563842773,36,0,repeated_oneshot,1,"[47, 47, 47]",47
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Beak,3856,Be,-92.75615692138672,-12.571779251098633,103,0,standard,0,"[45, 49, 46, 52, 43, 48, 47, 51, 44, 50]",
+Q6,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Beak,3856,Be,-73.8096694946289,-10.876577377319336,106,0,repeated_oneshot,0,"[49, 49, 49, 49, 49, 49, 49, 49, 49, 49]",49
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Beak,3856,Be,-94.26089477539062,-12.498893737792969,103,0,standard,1,"[50, 49, 47, 44, 48, 43, 51, 45, 52, 46]",
+Q6,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Bird,Beak,3856,Be,-80.57405090332031,-11.210973739624023,96,0,repeated_oneshot,1,"[44, 44, 44, 44, 44, 44, 44, 44, 44, 44]",44
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Belt,Waist,33484,Wa,-109.19523620605469,-11.332813262939453,17,0,standard,0,[60],
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Belt,Waist,33484,Wa,-109.19523620605469,-11.332813262939453,17,0,repeated_oneshot,0,[60],60
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Belt,Waist,33484,Wa,-107.1983871459961,-12.125615119934082,17,0,standard,1,[58],
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Belt,Waist,33484,Wa,-107.1983871459961,-12.125615119934082,17,0,repeated_oneshot,1,[58],58
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Belt,Waist,33484,Wa,-110.68856048583984,-13.37016773223877,40,0,standard,0,"[54, 62, 60]",
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Belt,Waist,33484,Wa,-93.83048248291016,-14.007088661193848,42,0,repeated_oneshot,0,"[54, 54, 54]",54
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Belt,Waist,33484,Wa,-103.13409423828125,-12.882226943969727,37,0,standard,1,"[62, 59, 63]",
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Belt,Waist,33484,Wa,-102.11781311035156,-13.665374755859375,36,0,repeated_oneshot,1,"[63, 63, 63]",63
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Belt,Waist,33484,Wa,-108.46064758300781,-13.328871726989746,113,0,standard,0,"[60, 58, 63, 61, 62, 59, 54, 57, 53, 56]",
+Q7,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Belt,Waist,33484,Wa,-90.94194793701172,-12.41948127746582,106,0,repeated_oneshot,0,"[59, 59, 59, 59, 59, 59, 59, 59, 59, 59]",59
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Belt,Waist,33484,Wa,-108.35335540771484,-13.399772644042969,113,0,standard,1,"[58, 53, 61, 55, 59, 60, 57, 54, 56, 63]",
+Q7,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Belt,Waist,33484,Wa,-92.66072082519531,-13.845478057861328,126,0,repeated_oneshot,1,"[54, 54, 54, 54, 54, 54, 54, 54, 54, 54]",54
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Anteater,Ant,13217,Ant,-81.3952407836914,-9.76297378540039,17,0,standard,0,[65],
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Anteater,Ant,13217,Ant,-81.3952407836914,-9.76297378540039,17,0,repeated_oneshot,0,[65],65
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Anteater,Ant,13217,Ant,-86.84246826171875,-12.770087242126465,19,0,standard,1,[72],
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,Anteater,Ant,13217,Ant,-86.84246826171875,-12.770087242126465,19,0,repeated_oneshot,1,[72],72
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Anteater,Ant,13217,Ant,-77.31587219238281,-10.039899826049805,36,0,standard,0,"[65, 67, 66]",
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Anteater,Ant,13217,Ant,-74.65290069580078,-9.296975135803223,35,0,repeated_oneshot,0,"[65, 65, 65]",65
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Anteater,Ant,13217,Ant,-87.72592163085938,-11.72348690032959,35,0,standard,1,"[68, 64, 71]",
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,Anteater,Ant,13217,Ant,-81.69610595703125,-8.535114288330078,35,0,repeated_oneshot,1,"[64, 64, 64]",64
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Anteater,Ant,13217,Ant,-82.09551239013672,-11.621941566467285,106,0,standard,0,"[66, 73, 71, 72, 68, 67, 64, 70, 69, 65]",
+Q8,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Anteater,Ant,13217,Ant,-74.66590118408203,-7.983222961425781,98,0,repeated_oneshot,0,"[64, 64, 64, 64, 64, 64, 64, 64, 64, 64]",64
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Anteater,Ant,13217,Ant,-86.6656494140625,-13.3280029296875,106,0,standard,1,"[67, 68, 70, 71, 73, 69, 65, 64, 66, 72]",
+Q8,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,Anteater,Ant,13217,Ant,-71.81380462646484,-8.83701229095459,108,0,repeated_oneshot,1,"[73, 73, 73, 73, 73, 73, 73, 73, 73, 73]",73
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,cocoa bean,chocolate,354,ch,-94.18675994873047,-10.681314468383789,16,0,standard,0,[82],
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,cocoa bean,chocolate,354,ch,-94.18675994873047,-10.681314468383789,16,0,repeated_oneshot,0,[82],82
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,cocoa bean,chocolate,354,ch,-85.09894561767578,-10.031379699707031,16,0,standard,1,[79],
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,1,cocoa bean,chocolate,354,ch,-85.09894561767578,-10.031379699707031,16,0,repeated_oneshot,1,[79],79
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,cocoa bean,chocolate,354,ch,-90.60112762451172,-11.46281909942627,34,0,standard,0,"[81, 78, 82]",
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,cocoa bean,chocolate,354,ch,-72.31330871582031,-10.438664436340332,34,0,repeated_oneshot,0,"[78, 78, 78]",78
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,cocoa bean,chocolate,354,ch,-94.66128540039062,-11.384025573730469,34,0,standard,1,"[80, 83, 74]",
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,3,cocoa bean,chocolate,354,ch,-80.66748046875,-9.999197006225586,34,0,repeated_oneshot,1,"[80, 80, 80]",80
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,cocoa bean,chocolate,354,ch,-92.069580078125,-11.994321823120117,97,0,standard,0,"[76, 77, 78, 79, 83, 74, 81, 75, 80, 82]",
+Q9,0,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,cocoa bean,chocolate,354,ch,-68.25618743896484,-9.336002349853516,97,0,repeated_oneshot,0,"[75, 75, 75, 75, 75, 75, 75, 75, 75, 75]",75
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,cocoa bean,chocolate,354,ch,-91.68582153320312,-11.874872207641602,97,0,standard,1,"[83, 75, 76, 80, 81, 77, 74, 79, 82, 78]",
+Q9,1,datasets/relation/relationA_ex.csv,datasets/relation/relationB_ex.csv,10,cocoa bean,chocolate,354,ch,-66.11296081542969,-9.866454124450684,97,0,repeated_oneshot,1,"[79, 79, 79, 79, 79, 79, 79, 79, 79, 79]",79

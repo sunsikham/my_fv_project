@@ -64,8 +64,25 @@ def main():
     parser.add_argument("--prepend_bos_token_used", type=parse_bool, default=None)
     parser.add_argument("--verify", type=parse_bool, default=False)
     parser.add_argument("--verify_n", type=int, default=3)
+    parser.add_argument(
+        "--log_path",
+        type=str,
+        default=None,
+        help="Optional path to write summary output instead of printing.",
+    )
 
     args = parser.parse_args()
+
+    def _emit(line: str):
+        if log_handle is None:
+            print(line)
+        else:
+            log_handle.write(line + "\n")
+
+    log_handle = None
+    if args.log_path:
+        Path(args.log_path).parent.mkdir(parents=True, exist_ok=True)
+        log_handle = open(args.log_path, "w", encoding="utf-8")
 
     if args.verify and args.dataset_json is None and args.out_path:
         fixed_trials = json.load(open(args.out_path, "r", encoding="utf-8"))
@@ -88,12 +105,12 @@ def main():
                     assert int(check_ids[0]) == int(trial["answer_ids"][0])
                 assert int(check_ids[0]) == int(trial["first_token_id"])
             for i, trial in enumerate(trials_data["trials"][: max(0, int(args.verify_n))]):
-                print(f"[VERIFY] trial={i}")
-                print(
+                _emit(f"[VERIFY] trial={i}")
+                _emit(
                     f"  clean_head80={repr(trial['clean_prompt_str'][:80])} "
                     f"clean_tail80={repr(trial['clean_prompt_str'][-80:])}"
                 )
-                print(
+                _emit(
                     f"  corrupted_head80={repr(trial['corrupted_prompt_str'][:80])} "
                     f"corrupted_tail80={repr(trial['corrupted_prompt_str'][-80:])}"
                 )
@@ -102,7 +119,7 @@ def main():
                     add_special_tokens=add_special_tokens,
                 )
                 ids = enc["input_ids"]
-                print(f"  ids_len={len(ids)} ids_last10={ids[-10:]}")
+                _emit(f"  ids_len={len(ids)} ids_last10={ids[-10:]}")
                 answer_ids = trial.get("answer_ids") or []
                 answer_ids_first = answer_ids[0] if answer_ids else None
                 match = (
@@ -110,14 +127,16 @@ def main():
                     if answer_ids_first is not None
                     else None
                 )
-                print(f"  target_str_repr={repr(trial['target_str'])}")
-                print(
+                _emit(f"  target_str_repr={repr(trial['target_str'])}")
+                _emit(
                     f"  first_token_id={trial['first_token_id']} "
                     f"answer_ids_first={answer_ids_first} match={match}"
                 )
                 if len(ids) == 0:
                     raise ValueError("tokenized ids empty for corrupted_prompt_str")
         _verify_only(fixed_trials)
+        if log_handle is not None:
+            log_handle.close()
         return
 
     if not args.dataset_json:
@@ -135,10 +154,17 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # SSOT for BOS: do not inject BOS token via prompt strings.
+    # Rely on tokenizer add_special_tokens instead.
     if args.prepend_bos_token_used is None:
-        prepend_bos_token_used = False if args.model_prepend_bos else True
+        prepend_bos_token_used = False
     else:
         prepend_bos_token_used = bool(args.prepend_bos_token_used)
+
+    # Defensive: strip BOS string from instructions prefix if present.
+    bos_token_str = tokenizer.bos_token or tokenizer.eos_token or ""
+    if bos_token_str and args.prefixes.get("instructions", "").startswith(bos_token_str):
+        args.prefixes["instructions"] = args.prefixes["instructions"].replace(bos_token_str, "", 1)
 
     trials = []
     for trial_id in range(args.n_trials):
@@ -298,11 +324,14 @@ def main():
 
     if fixed_trials["trials"]:
         first_trial = fixed_trials["trials"][0]
-        print("Trial 0 clean prompt:")
-        print(first_trial["clean_prompt_str"])
-        print("Trial 0 corrupted prompt:")
-        print(first_trial["corrupted_prompt_str"])
-        print(f"Trial 0 first_token_id: {first_trial['first_token_id']}")
+        _emit("Trial 0 clean prompt:")
+        _emit(first_trial["clean_prompt_str"])
+        _emit("Trial 0 corrupted prompt:")
+        _emit(first_trial["corrupted_prompt_str"])
+        _emit(f"Trial 0 first_token_id: {first_trial['first_token_id']}")
+
+    if log_handle is not None:
+        log_handle.close()
 
 
 if __name__ == "__main__":

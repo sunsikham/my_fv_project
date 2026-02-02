@@ -1,6 +1,6 @@
 {
   "meta": {
-    "dataset_json": "datasets/processed/antonym.json",
+    "dataset_json": "datasets/antonym/raw/antonym.json",
     "seed": 0,
     "n_trials": 10,
     "n_shots": 10,
@@ -17,7 +17,7 @@
     },
     "model_name_for_tokenizer": "gpt2",
     "model_prepend_bos": false,
-    "prepend_bos_token_used": true
+    "prepend_bos_token_used": false
   },
   "splits": {
     "train_indices": [
@@ -2441,6 +2441,94 @@
         126
       ],
       "query_index_in_valid": 201,
+      "demos_clean": [
+        {
+          "input": " interrogation",
+          "output": " explanation"
+        },
+        {
+          "input": " stranger",
+          "output": " familiar"
+        },
+        {
+          "input": " incompetence",
+          "output": " competence"
+        },
+        {
+          "input": " antagonist",
+          "output": " protagonist"
+        },
+        {
+          "input": " unofficial",
+          "output": " official"
+        },
+        {
+          "input": " brilliant",
+          "output": " dull"
+        },
+        {
+          "input": " child",
+          "output": " adult"
+        },
+        {
+          "input": " idiot",
+          "output": " genius"
+        },
+        {
+          "input": " retired",
+          "output": " employed"
+        },
+        {
+          "input": " analogy",
+          "output": " discrepancy"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " interrogation",
+          "output": " official"
+        },
+        {
+          "input": " stranger",
+          "output": " genius"
+        },
+        {
+          "input": " incompetence",
+          "output": " adult"
+        },
+        {
+          "input": " antagonist",
+          "output": " competence"
+        },
+        {
+          "input": " unofficial",
+          "output": " dull"
+        },
+        {
+          "input": " brilliant",
+          "output": " familiar"
+        },
+        {
+          "input": " child",
+          "output": " protagonist"
+        },
+        {
+          "input": " idiot",
+          "output": " discrepancy"
+        },
+        {
+          "input": " retired",
+          "output": " employed"
+        },
+        {
+          "input": " analogy",
+          "output": " explanation"
+        }
+      ],
+      "query": {
+        "input": " dusty",
+        "output": " clean"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -2451,7 +2539,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " dusty",
@@ -2510,7 +2598,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " dusty",
@@ -2559,12 +2647,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: interrogation\nA: explanation\n\nQ: stranger\nA: familiar\n\nQ: incompetence\nA: competence\n\nQ: antagonist\nA: protagonist\n\nQ: unofficial\nA: official\n\nQ: brilliant\nA: dull\n\nQ: child\nA: adult\n\nQ: idiot\nA: genius\n\nQ: retired\nA: employed\n\nQ: analogy\nA: discrepancy\n\nQ: dusty\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: interrogation\nA: official\n\nQ: stranger\nA: genius\n\nQ: incompetence\nA: adult\n\nQ: antagonist\nA: competence\n\nQ: unofficial\nA: dull\n\nQ: brilliant\nA: familiar\n\nQ: child\nA: protagonist\n\nQ: idiot\nA: discrepancy\n\nQ: retired\nA: employed\n\nQ: analogy\nA: explanation\n\nQ: dusty\nA:",
+      "clean_prompt_str": "Q: interrogation\nA: explanation\n\nQ: stranger\nA: familiar\n\nQ: incompetence\nA: competence\n\nQ: antagonist\nA: protagonist\n\nQ: unofficial\nA: official\n\nQ: brilliant\nA: dull\n\nQ: child\nA: adult\n\nQ: idiot\nA: genius\n\nQ: retired\nA: employed\n\nQ: analogy\nA: discrepancy\n\nQ: dusty\nA:",
+      "corrupted_prompt_str": "Q: interrogation\nA: official\n\nQ: stranger\nA: genius\n\nQ: incompetence\nA: adult\n\nQ: antagonist\nA: competence\n\nQ: unofficial\nA: dull\n\nQ: brilliant\nA: familiar\n\nQ: child\nA: protagonist\n\nQ: idiot\nA: discrepancy\n\nQ: retired\nA: employed\n\nQ: analogy\nA: explanation\n\nQ: dusty\nA:",
       "target_str": " clean",
       "answer_ids": [
         3424
       ],
+      "first_token_id": 3424,
       "target_first_token_id": 3424
     },
     {
@@ -2582,6 +2671,94 @@
         47
       ],
       "query_index_in_valid": 173,
+      "demos_clean": [
+        {
+          "input": " outdoor",
+          "output": " indoor"
+        },
+        {
+          "input": " quick",
+          "output": " slow"
+        },
+        {
+          "input": " messy",
+          "output": " neat"
+        },
+        {
+          "input": " acquaintance",
+          "output": " stranger"
+        },
+        {
+          "input": " sustain",
+          "output": " deplete"
+        },
+        {
+          "input": " convoluted",
+          "output": " straightforward"
+        },
+        {
+          "input": " popular",
+          "output": " unpopular"
+        },
+        {
+          "input": " curiosity",
+          "output": " apathy"
+        },
+        {
+          "input": " worsen",
+          "output": " improve"
+        },
+        {
+          "input": " guilt",
+          "output": " innocence"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " outdoor",
+          "output": " slow"
+        },
+        {
+          "input": " quick",
+          "output": " neat"
+        },
+        {
+          "input": " messy",
+          "output": " straightforward"
+        },
+        {
+          "input": " acquaintance",
+          "output": " improve"
+        },
+        {
+          "input": " sustain",
+          "output": " indoor"
+        },
+        {
+          "input": " convoluted",
+          "output": " deplete"
+        },
+        {
+          "input": " popular",
+          "output": " apathy"
+        },
+        {
+          "input": " curiosity",
+          "output": " innocence"
+        },
+        {
+          "input": " worsen",
+          "output": " stranger"
+        },
+        {
+          "input": " guilt",
+          "output": " unpopular"
+        }
+      ],
+      "query": {
+        "input": " exclude",
+        "output": " include"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -2592,7 +2769,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " exclude",
@@ -2651,7 +2828,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " exclude",
@@ -2700,12 +2877,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: outdoor\nA: indoor\n\nQ: quick\nA: slow\n\nQ: messy\nA: neat\n\nQ: acquaintance\nA: stranger\n\nQ: sustain\nA: deplete\n\nQ: convoluted\nA: straightforward\n\nQ: popular\nA: unpopular\n\nQ: curiosity\nA: apathy\n\nQ: worsen\nA: improve\n\nQ: guilt\nA: innocence\n\nQ: exclude\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
+      "clean_prompt_str": "Q: outdoor\nA: indoor\n\nQ: quick\nA: slow\n\nQ: messy\nA: neat\n\nQ: acquaintance\nA: stranger\n\nQ: sustain\nA: deplete\n\nQ: convoluted\nA: straightforward\n\nQ: popular\nA: unpopular\n\nQ: curiosity\nA: apathy\n\nQ: worsen\nA: improve\n\nQ: guilt\nA: innocence\n\nQ: exclude\nA:",
+      "corrupted_prompt_str": "Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
       "target_str": " include",
       "answer_ids": [
         2291
       ],
+      "first_token_id": 2291,
       "target_first_token_id": 2291
     },
     {
@@ -2723,6 +2901,94 @@
         814
       ],
       "query_index_in_valid": 155,
+      "demos_clean": [
+        {
+          "input": " previous",
+          "output": " next"
+        },
+        {
+          "input": " sick",
+          "output": " healthy"
+        },
+        {
+          "input": " humid",
+          "output": " dry"
+        },
+        {
+          "input": " premium",
+          "output": " basic"
+        },
+        {
+          "input": " confident",
+          "output": " insecure"
+        },
+        {
+          "input": " respect",
+          "output": " disrespect"
+        },
+        {
+          "input": " moist",
+          "output": " dry"
+        },
+        {
+          "input": " exceptional",
+          "output": " ordinary"
+        },
+        {
+          "input": " inexperienced",
+          "output": " experienced"
+        },
+        {
+          "input": " authorize",
+          "output": " prohibit"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " previous",
+          "output": " ordinary"
+        },
+        {
+          "input": " sick",
+          "output": " healthy"
+        },
+        {
+          "input": " humid",
+          "output": " next"
+        },
+        {
+          "input": " premium",
+          "output": " basic"
+        },
+        {
+          "input": " confident",
+          "output": " disrespect"
+        },
+        {
+          "input": " respect",
+          "output": " experienced"
+        },
+        {
+          "input": " moist",
+          "output": " insecure"
+        },
+        {
+          "input": " exceptional",
+          "output": " dry"
+        },
+        {
+          "input": " inexperienced",
+          "output": " dry"
+        },
+        {
+          "input": " authorize",
+          "output": " prohibit"
+        }
+      ],
+      "query": {
+        "input": " comedy",
+        "output": " tragedy"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -2733,7 +2999,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " comedy",
@@ -2792,7 +3058,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " comedy",
@@ -2841,12 +3107,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: previous\nA: next\n\nQ: sick\nA: healthy\n\nQ: humid\nA: dry\n\nQ: premium\nA: basic\n\nQ: confident\nA: insecure\n\nQ: respect\nA: disrespect\n\nQ: moist\nA: dry\n\nQ: exceptional\nA: ordinary\n\nQ: inexperienced\nA: experienced\n\nQ: authorize\nA: prohibit\n\nQ: comedy\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: previous\nA: ordinary\n\nQ: sick\nA: healthy\n\nQ: humid\nA: next\n\nQ: premium\nA: basic\n\nQ: confident\nA: disrespect\n\nQ: respect\nA: experienced\n\nQ: moist\nA: insecure\n\nQ: exceptional\nA: dry\n\nQ: inexperienced\nA: dry\n\nQ: authorize\nA: prohibit\n\nQ: comedy\nA:",
+      "clean_prompt_str": "Q: previous\nA: next\n\nQ: sick\nA: healthy\n\nQ: humid\nA: dry\n\nQ: premium\nA: basic\n\nQ: confident\nA: insecure\n\nQ: respect\nA: disrespect\n\nQ: moist\nA: dry\n\nQ: exceptional\nA: ordinary\n\nQ: inexperienced\nA: experienced\n\nQ: authorize\nA: prohibit\n\nQ: comedy\nA:",
+      "corrupted_prompt_str": "Q: previous\nA: ordinary\n\nQ: sick\nA: healthy\n\nQ: humid\nA: next\n\nQ: premium\nA: basic\n\nQ: confident\nA: disrespect\n\nQ: respect\nA: experienced\n\nQ: moist\nA: insecure\n\nQ: exceptional\nA: dry\n\nQ: inexperienced\nA: dry\n\nQ: authorize\nA: prohibit\n\nQ: comedy\nA:",
       "target_str": " tragedy",
       "answer_ids": [
         13574
       ],
+      "first_token_id": 13574,
       "target_first_token_id": 13574
     },
     {
@@ -2864,6 +3131,94 @@
         81
       ],
       "query_index_in_valid": 172,
+      "demos_clean": [
+        {
+          "input": " intricate",
+          "output": " simple"
+        },
+        {
+          "input": " harmless",
+          "output": " harmful"
+        },
+        {
+          "input": " virtual",
+          "output": " real"
+        },
+        {
+          "input": " sink",
+          "output": " float"
+        },
+        {
+          "input": " catalyst",
+          "output": " inhibitor"
+        },
+        {
+          "input": " broad",
+          "output": " narrow"
+        },
+        {
+          "input": " single",
+          "output": " married"
+        },
+        {
+          "input": " interim",
+          "output": " permanent"
+        },
+        {
+          "input": " fiction",
+          "output": " nonfiction"
+        },
+        {
+          "input": " ceiling",
+          "output": " floor"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " intricate",
+          "output": " married"
+        },
+        {
+          "input": " harmless",
+          "output": " permanent"
+        },
+        {
+          "input": " virtual",
+          "output": " simple"
+        },
+        {
+          "input": " sink",
+          "output": " narrow"
+        },
+        {
+          "input": " catalyst",
+          "output": " inhibitor"
+        },
+        {
+          "input": " broad",
+          "output": " harmful"
+        },
+        {
+          "input": " single",
+          "output": " float"
+        },
+        {
+          "input": " interim",
+          "output": " real"
+        },
+        {
+          "input": " fiction",
+          "output": " floor"
+        },
+        {
+          "input": " ceiling",
+          "output": " nonfiction"
+        }
+      ],
+      "query": {
+        "input": " muff",
+        "output": " sharp"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -2874,7 +3229,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " muff",
@@ -2933,7 +3288,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " muff",
@@ -2982,12 +3337,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: intricate\nA: simple\n\nQ: harmless\nA: harmful\n\nQ: virtual\nA: real\n\nQ: sink\nA: float\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: narrow\n\nQ: single\nA: married\n\nQ: interim\nA: permanent\n\nQ: fiction\nA: nonfiction\n\nQ: ceiling\nA: floor\n\nQ: muff\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: intricate\nA: married\n\nQ: harmless\nA: permanent\n\nQ: virtual\nA: simple\n\nQ: sink\nA: narrow\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: harmful\n\nQ: single\nA: float\n\nQ: interim\nA: real\n\nQ: fiction\nA: floor\n\nQ: ceiling\nA: nonfiction\n\nQ: muff\nA:",
+      "clean_prompt_str": "Q: intricate\nA: simple\n\nQ: harmless\nA: harmful\n\nQ: virtual\nA: real\n\nQ: sink\nA: float\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: narrow\n\nQ: single\nA: married\n\nQ: interim\nA: permanent\n\nQ: fiction\nA: nonfiction\n\nQ: ceiling\nA: floor\n\nQ: muff\nA:",
+      "corrupted_prompt_str": "Q: intricate\nA: married\n\nQ: harmless\nA: permanent\n\nQ: virtual\nA: simple\n\nQ: sink\nA: narrow\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: harmful\n\nQ: single\nA: float\n\nQ: interim\nA: real\n\nQ: fiction\nA: floor\n\nQ: ceiling\nA: nonfiction\n\nQ: muff\nA:",
       "target_str": " sharp",
       "answer_ids": [
         7786
       ],
+      "first_token_id": 7786,
       "target_first_token_id": 7786
     },
     {
@@ -3005,6 +3361,94 @@
         1040
       ],
       "query_index_in_valid": 95,
+      "demos_clean": [
+        {
+          "input": " empirical",
+          "output": " theoretical"
+        },
+        {
+          "input": " supreme",
+          "output": " inferior"
+        },
+        {
+          "input": " make",
+          "output": " destroy"
+        },
+        {
+          "input": " security",
+          "output": " risk"
+        },
+        {
+          "input": " malfunction",
+          "output": " function"
+        },
+        {
+          "input": " invest",
+          "output": " withdraw"
+        },
+        {
+          "input": " progressive",
+          "output": " regressive"
+        },
+        {
+          "input": " pretty",
+          "output": " ugly"
+        },
+        {
+          "input": " professional",
+          "output": " amateur"
+        },
+        {
+          "input": " distribute",
+          "output": " collect"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " empirical",
+          "output": " function"
+        },
+        {
+          "input": " supreme",
+          "output": " destroy"
+        },
+        {
+          "input": " make",
+          "output": " regressive"
+        },
+        {
+          "input": " security",
+          "output": " withdraw"
+        },
+        {
+          "input": " malfunction",
+          "output": " inferior"
+        },
+        {
+          "input": " invest",
+          "output": " collect"
+        },
+        {
+          "input": " progressive",
+          "output": " amateur"
+        },
+        {
+          "input": " pretty",
+          "output": " risk"
+        },
+        {
+          "input": " professional",
+          "output": " ugly"
+        },
+        {
+          "input": " distribute",
+          "output": " theoretical"
+        }
+      ],
+      "query": {
+        "input": " cooperate",
+        "output": " compete"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3015,7 +3459,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " cooperate",
@@ -3074,7 +3518,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " cooperate",
@@ -3123,12 +3567,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: empirical\nA: theoretical\n\nQ: supreme\nA: inferior\n\nQ: make\nA: destroy\n\nQ: security\nA: risk\n\nQ: malfunction\nA: function\n\nQ: invest\nA: withdraw\n\nQ: progressive\nA: regressive\n\nQ: pretty\nA: ugly\n\nQ: professional\nA: amateur\n\nQ: distribute\nA: collect\n\nQ: cooperate\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: empirical\nA: function\n\nQ: supreme\nA: destroy\n\nQ: make\nA: regressive\n\nQ: security\nA: withdraw\n\nQ: malfunction\nA: inferior\n\nQ: invest\nA: collect\n\nQ: progressive\nA: amateur\n\nQ: pretty\nA: risk\n\nQ: professional\nA: ugly\n\nQ: distribute\nA: theoretical\n\nQ: cooperate\nA:",
+      "clean_prompt_str": "Q: empirical\nA: theoretical\n\nQ: supreme\nA: inferior\n\nQ: make\nA: destroy\n\nQ: security\nA: risk\n\nQ: malfunction\nA: function\n\nQ: invest\nA: withdraw\n\nQ: progressive\nA: regressive\n\nQ: pretty\nA: ugly\n\nQ: professional\nA: amateur\n\nQ: distribute\nA: collect\n\nQ: cooperate\nA:",
+      "corrupted_prompt_str": "Q: empirical\nA: function\n\nQ: supreme\nA: destroy\n\nQ: make\nA: regressive\n\nQ: security\nA: withdraw\n\nQ: malfunction\nA: inferior\n\nQ: invest\nA: collect\n\nQ: progressive\nA: amateur\n\nQ: pretty\nA: risk\n\nQ: professional\nA: ugly\n\nQ: distribute\nA: theoretical\n\nQ: cooperate\nA:",
       "target_str": " compete",
       "answer_ids": [
         9320
       ],
+      "first_token_id": 9320,
       "target_first_token_id": 9320
     },
     {
@@ -3146,6 +3591,94 @@
         27
       ],
       "query_index_in_valid": 201,
+      "demos_clean": [
+        {
+          "input": " bottom",
+          "output": " top"
+        },
+        {
+          "input": " chilly",
+          "output": " warm"
+        },
+        {
+          "input": " truthful",
+          "output": " deceptive"
+        },
+        {
+          "input": " operative",
+          "output": " inoperative"
+        },
+        {
+          "input": " damned",
+          "output": " blessed"
+        },
+        {
+          "input": " inconvenient",
+          "output": " convenient"
+        },
+        {
+          "input": " defense",
+          "output": " offense"
+        },
+        {
+          "input": " other",
+          "output": " same"
+        },
+        {
+          "input": " fluorescent",
+          "output": " incandescent"
+        },
+        {
+          "input": " child",
+          "output": " adult"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " bottom",
+          "output": " warm"
+        },
+        {
+          "input": " chilly",
+          "output": " adult"
+        },
+        {
+          "input": " truthful",
+          "output": " blessed"
+        },
+        {
+          "input": " operative",
+          "output": " incandescent"
+        },
+        {
+          "input": " damned",
+          "output": " same"
+        },
+        {
+          "input": " inconvenient",
+          "output": " deceptive"
+        },
+        {
+          "input": " defense",
+          "output": " convenient"
+        },
+        {
+          "input": " other",
+          "output": " offense"
+        },
+        {
+          "input": " fluorescent",
+          "output": " inoperative"
+        },
+        {
+          "input": " child",
+          "output": " top"
+        }
+      ],
+      "query": {
+        "input": " dusty",
+        "output": " clean"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3156,7 +3689,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " dusty",
@@ -3215,7 +3748,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " dusty",
@@ -3264,12 +3797,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: bottom\nA: top\n\nQ: chilly\nA: warm\n\nQ: truthful\nA: deceptive\n\nQ: operative\nA: inoperative\n\nQ: damned\nA: blessed\n\nQ: inconvenient\nA: convenient\n\nQ: defense\nA: offense\n\nQ: other\nA: same\n\nQ: fluorescent\nA: incandescent\n\nQ: child\nA: adult\n\nQ: dusty\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: bottom\nA: warm\n\nQ: chilly\nA: adult\n\nQ: truthful\nA: blessed\n\nQ: operative\nA: incandescent\n\nQ: damned\nA: same\n\nQ: inconvenient\nA: deceptive\n\nQ: defense\nA: convenient\n\nQ: other\nA: offense\n\nQ: fluorescent\nA: inoperative\n\nQ: child\nA: top\n\nQ: dusty\nA:",
+      "clean_prompt_str": "Q: bottom\nA: top\n\nQ: chilly\nA: warm\n\nQ: truthful\nA: deceptive\n\nQ: operative\nA: inoperative\n\nQ: damned\nA: blessed\n\nQ: inconvenient\nA: convenient\n\nQ: defense\nA: offense\n\nQ: other\nA: same\n\nQ: fluorescent\nA: incandescent\n\nQ: child\nA: adult\n\nQ: dusty\nA:",
+      "corrupted_prompt_str": "Q: bottom\nA: warm\n\nQ: chilly\nA: adult\n\nQ: truthful\nA: blessed\n\nQ: operative\nA: incandescent\n\nQ: damned\nA: same\n\nQ: inconvenient\nA: deceptive\n\nQ: defense\nA: convenient\n\nQ: other\nA: offense\n\nQ: fluorescent\nA: inoperative\n\nQ: child\nA: top\n\nQ: dusty\nA:",
       "target_str": " clean",
       "answer_ids": [
         3424
       ],
+      "first_token_id": 3424,
       "target_first_token_id": 3424
     },
     {
@@ -3287,6 +3821,94 @@
         1631
       ],
       "query_index_in_valid": 30,
+      "demos_clean": [
+        {
+          "input": " retrospect",
+          "output": " prospect"
+        },
+        {
+          "input": " conspiracy",
+          "output": " truth"
+        },
+        {
+          "input": " humble",
+          "output": " arrogant"
+        },
+        {
+          "input": " odd",
+          "output": " even"
+        },
+        {
+          "input": " reciprocal",
+          "output": " direct"
+        },
+        {
+          "input": " reasonable",
+          "output": " unreasonable"
+        },
+        {
+          "input": " neoliberal",
+          "output": " conservative"
+        },
+        {
+          "input": " dawn",
+          "output": " dusk"
+        },
+        {
+          "input": " cry",
+          "output": " laugh"
+        },
+        {
+          "input": " receiver",
+          "output": " sender"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " retrospect",
+          "output": " laugh"
+        },
+        {
+          "input": " conspiracy",
+          "output": " conservative"
+        },
+        {
+          "input": " humble",
+          "output": " arrogant"
+        },
+        {
+          "input": " odd",
+          "output": " truth"
+        },
+        {
+          "input": " reciprocal",
+          "output": " direct"
+        },
+        {
+          "input": " reasonable",
+          "output": " unreasonable"
+        },
+        {
+          "input": " neoliberal",
+          "output": " prospect"
+        },
+        {
+          "input": " dawn",
+          "output": " even"
+        },
+        {
+          "input": " cry",
+          "output": " dusk"
+        },
+        {
+          "input": " receiver",
+          "output": " sender"
+        }
+      ],
+      "query": {
+        "input": " paternal",
+        "output": " maternal"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3297,7 +3919,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " paternal",
@@ -3356,7 +3978,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " paternal",
@@ -3405,12 +4027,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: retrospect\nA: prospect\n\nQ: conspiracy\nA: truth\n\nQ: humble\nA: arrogant\n\nQ: odd\nA: even\n\nQ: reciprocal\nA: direct\n\nQ: reasonable\nA: unreasonable\n\nQ: neoliberal\nA: conservative\n\nQ: dawn\nA: dusk\n\nQ: cry\nA: laugh\n\nQ: receiver\nA: sender\n\nQ: paternal\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: retrospect\nA: laugh\n\nQ: conspiracy\nA: conservative\n\nQ: humble\nA: arrogant\n\nQ: odd\nA: truth\n\nQ: reciprocal\nA: direct\n\nQ: reasonable\nA: unreasonable\n\nQ: neoliberal\nA: prospect\n\nQ: dawn\nA: even\n\nQ: cry\nA: dusk\n\nQ: receiver\nA: sender\n\nQ: paternal\nA:",
+      "clean_prompt_str": "Q: retrospect\nA: prospect\n\nQ: conspiracy\nA: truth\n\nQ: humble\nA: arrogant\n\nQ: odd\nA: even\n\nQ: reciprocal\nA: direct\n\nQ: reasonable\nA: unreasonable\n\nQ: neoliberal\nA: conservative\n\nQ: dawn\nA: dusk\n\nQ: cry\nA: laugh\n\nQ: receiver\nA: sender\n\nQ: paternal\nA:",
+      "corrupted_prompt_str": "Q: retrospect\nA: laugh\n\nQ: conspiracy\nA: conservative\n\nQ: humble\nA: arrogant\n\nQ: odd\nA: truth\n\nQ: reciprocal\nA: direct\n\nQ: reasonable\nA: unreasonable\n\nQ: neoliberal\nA: prospect\n\nQ: dawn\nA: even\n\nQ: cry\nA: dusk\n\nQ: receiver\nA: sender\n\nQ: paternal\nA:",
       "target_str": " maternal",
       "answer_ids": [
         22160
       ],
+      "first_token_id": 22160,
       "target_first_token_id": 22160
     },
     {
@@ -3428,6 +4051,94 @@
         519
       ],
       "query_index_in_valid": 140,
+      "demos_clean": [
+        {
+          "input": " colonial",
+          "output": " modern"
+        },
+        {
+          "input": " heating",
+          "output": " cooling"
+        },
+        {
+          "input": " wicked",
+          "output": " virtuous"
+        },
+        {
+          "input": " deny",
+          "output": " confirm"
+        },
+        {
+          "input": " guilt",
+          "output": " innocence"
+        },
+        {
+          "input": " insecure",
+          "output": " secure"
+        },
+        {
+          "input": " rise",
+          "output": " fall"
+        },
+        {
+          "input": " conclusion",
+          "output": " introduction"
+        },
+        {
+          "input": " invest",
+          "output": " withdraw"
+        },
+        {
+          "input": " confident",
+          "output": " insecure"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " colonial",
+          "output": " introduction"
+        },
+        {
+          "input": " heating",
+          "output": " withdraw"
+        },
+        {
+          "input": " wicked",
+          "output": " modern"
+        },
+        {
+          "input": " deny",
+          "output": " confirm"
+        },
+        {
+          "input": " guilt",
+          "output": " cooling"
+        },
+        {
+          "input": " insecure",
+          "output": " innocence"
+        },
+        {
+          "input": " rise",
+          "output": " insecure"
+        },
+        {
+          "input": " conclusion",
+          "output": " fall"
+        },
+        {
+          "input": " invest",
+          "output": " secure"
+        },
+        {
+          "input": " confident",
+          "output": " virtuous"
+        }
+      ],
+      "query": {
+        "input": " exotic",
+        "output": " common"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3438,7 +4149,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " exotic",
@@ -3497,7 +4208,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " exotic",
@@ -3546,12 +4257,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: colonial\nA: modern\n\nQ: heating\nA: cooling\n\nQ: wicked\nA: virtuous\n\nQ: deny\nA: confirm\n\nQ: guilt\nA: innocence\n\nQ: insecure\nA: secure\n\nQ: rise\nA: fall\n\nQ: conclusion\nA: introduction\n\nQ: invest\nA: withdraw\n\nQ: confident\nA: insecure\n\nQ: exotic\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: colonial\nA: introduction\n\nQ: heating\nA: withdraw\n\nQ: wicked\nA: modern\n\nQ: deny\nA: confirm\n\nQ: guilt\nA: cooling\n\nQ: insecure\nA: innocence\n\nQ: rise\nA: insecure\n\nQ: conclusion\nA: fall\n\nQ: invest\nA: secure\n\nQ: confident\nA: virtuous\n\nQ: exotic\nA:",
+      "clean_prompt_str": "Q: colonial\nA: modern\n\nQ: heating\nA: cooling\n\nQ: wicked\nA: virtuous\n\nQ: deny\nA: confirm\n\nQ: guilt\nA: innocence\n\nQ: insecure\nA: secure\n\nQ: rise\nA: fall\n\nQ: conclusion\nA: introduction\n\nQ: invest\nA: withdraw\n\nQ: confident\nA: insecure\n\nQ: exotic\nA:",
+      "corrupted_prompt_str": "Q: colonial\nA: introduction\n\nQ: heating\nA: withdraw\n\nQ: wicked\nA: modern\n\nQ: deny\nA: confirm\n\nQ: guilt\nA: cooling\n\nQ: insecure\nA: innocence\n\nQ: rise\nA: insecure\n\nQ: conclusion\nA: fall\n\nQ: invest\nA: secure\n\nQ: confident\nA: virtuous\n\nQ: exotic\nA:",
       "target_str": " common",
       "answer_ids": [
         2219
       ],
+      "first_token_id": 2219,
       "target_first_token_id": 2219
     },
     {
@@ -3569,6 +4281,94 @@
         1303
       ],
       "query_index_in_valid": 106,
+      "demos_clean": [
+        {
+          "input": " messy",
+          "output": " neat"
+        },
+        {
+          "input": " obese",
+          "output": " skinny"
+        },
+        {
+          "input": " sovereign",
+          "output": " subservient"
+        },
+        {
+          "input": " row",
+          "output": " column"
+        },
+        {
+          "input": " give",
+          "output": " take"
+        },
+        {
+          "input": " consistency",
+          "output": " inconsistency"
+        },
+        {
+          "input": " serious",
+          "output": " funny"
+        },
+        {
+          "input": " forbid",
+          "output": " allow"
+        },
+        {
+          "input": " enough",
+          "output": " insufficient"
+        },
+        {
+          "input": " supporter",
+          "output": " opponent"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " messy",
+          "output": " column"
+        },
+        {
+          "input": " obese",
+          "output": " allow"
+        },
+        {
+          "input": " sovereign",
+          "output": " opponent"
+        },
+        {
+          "input": " row",
+          "output": " take"
+        },
+        {
+          "input": " give",
+          "output": " skinny"
+        },
+        {
+          "input": " consistency",
+          "output": " neat"
+        },
+        {
+          "input": " serious",
+          "output": " funny"
+        },
+        {
+          "input": " forbid",
+          "output": " inconsistency"
+        },
+        {
+          "input": " enough",
+          "output": " subservient"
+        },
+        {
+          "input": " supporter",
+          "output": " insufficient"
+        }
+      ],
+      "query": {
+        "input": " upstairs",
+        "output": " downstairs"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3579,7 +4379,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " upstairs",
@@ -3638,7 +4438,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " upstairs",
@@ -3687,12 +4487,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: messy\nA: neat\n\nQ: obese\nA: skinny\n\nQ: sovereign\nA: subservient\n\nQ: row\nA: column\n\nQ: give\nA: take\n\nQ: consistency\nA: inconsistency\n\nQ: serious\nA: funny\n\nQ: forbid\nA: allow\n\nQ: enough\nA: insufficient\n\nQ: supporter\nA: opponent\n\nQ: upstairs\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: messy\nA: column\n\nQ: obese\nA: allow\n\nQ: sovereign\nA: opponent\n\nQ: row\nA: take\n\nQ: give\nA: skinny\n\nQ: consistency\nA: neat\n\nQ: serious\nA: funny\n\nQ: forbid\nA: inconsistency\n\nQ: enough\nA: subservient\n\nQ: supporter\nA: insufficient\n\nQ: upstairs\nA:",
+      "clean_prompt_str": "Q: messy\nA: neat\n\nQ: obese\nA: skinny\n\nQ: sovereign\nA: subservient\n\nQ: row\nA: column\n\nQ: give\nA: take\n\nQ: consistency\nA: inconsistency\n\nQ: serious\nA: funny\n\nQ: forbid\nA: allow\n\nQ: enough\nA: insufficient\n\nQ: supporter\nA: opponent\n\nQ: upstairs\nA:",
+      "corrupted_prompt_str": "Q: messy\nA: column\n\nQ: obese\nA: allow\n\nQ: sovereign\nA: opponent\n\nQ: row\nA: take\n\nQ: give\nA: skinny\n\nQ: consistency\nA: neat\n\nQ: serious\nA: funny\n\nQ: forbid\nA: inconsistency\n\nQ: enough\nA: subservient\n\nQ: supporter\nA: insufficient\n\nQ: upstairs\nA:",
       "target_str": " downstairs",
       "answer_ids": [
         34624
       ],
+      "first_token_id": 34624,
       "target_first_token_id": 34624
     },
     {
@@ -3710,6 +4511,94 @@
         72
       ],
       "query_index_in_valid": 23,
+      "demos_clean": [
+        {
+          "input": " bust",
+          "output": " boom"
+        },
+        {
+          "input": " fore",
+          "output": " aft"
+        },
+        {
+          "input": " visceral",
+          "output": " cerebral"
+        },
+        {
+          "input": " hard",
+          "output": " soft"
+        },
+        {
+          "input": " premature",
+          "output": " mature"
+        },
+        {
+          "input": " little",
+          "output": " big"
+        },
+        {
+          "input": " knowledge",
+          "output": " ignorance"
+        },
+        {
+          "input": " reduction",
+          "output": " increase"
+        },
+        {
+          "input": " longitudinal",
+          "output": " latitudinal"
+        },
+        {
+          "input": " fifth",
+          "output": " first"
+        }
+      ],
+      "demos_corrupted": [
+        {
+          "input": " bust",
+          "output": " mature"
+        },
+        {
+          "input": " fore",
+          "output": " latitudinal"
+        },
+        {
+          "input": " visceral",
+          "output": " aft"
+        },
+        {
+          "input": " hard",
+          "output": " boom"
+        },
+        {
+          "input": " premature",
+          "output": " increase"
+        },
+        {
+          "input": " little",
+          "output": " big"
+        },
+        {
+          "input": " knowledge",
+          "output": " soft"
+        },
+        {
+          "input": " reduction",
+          "output": " cerebral"
+        },
+        {
+          "input": " longitudinal",
+          "output": " first"
+        },
+        {
+          "input": " fifth",
+          "output": " ignorance"
+        }
+      ],
+      "query": {
+        "input": " fertility",
+        "output": " infertility"
+      },
       "prompt_data_clean": {
         "instructions": "",
         "separators": {
@@ -3720,7 +4609,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " fertility",
@@ -3779,7 +4668,7 @@
         "prefixes": {
           "input": "Q:",
           "output": "A:",
-          "instructions": "<|endoftext|>"
+          "instructions": ""
         },
         "query_target": {
           "input": " fertility",
@@ -3828,12 +4717,13 @@
           }
         ]
       },
-      "clean_prompt_str": "<|endoftext|>Q: bust\nA: boom\n\nQ: fore\nA: aft\n\nQ: visceral\nA: cerebral\n\nQ: hard\nA: soft\n\nQ: premature\nA: mature\n\nQ: little\nA: big\n\nQ: knowledge\nA: ignorance\n\nQ: reduction\nA: increase\n\nQ: longitudinal\nA: latitudinal\n\nQ: fifth\nA: first\n\nQ: fertility\nA:",
-      "corrupted_prompt_str": "<|endoftext|>Q: bust\nA: mature\n\nQ: fore\nA: latitudinal\n\nQ: visceral\nA: aft\n\nQ: hard\nA: boom\n\nQ: premature\nA: increase\n\nQ: little\nA: big\n\nQ: knowledge\nA: soft\n\nQ: reduction\nA: cerebral\n\nQ: longitudinal\nA: first\n\nQ: fifth\nA: ignorance\n\nQ: fertility\nA:",
+      "clean_prompt_str": "Q: bust\nA: boom\n\nQ: fore\nA: aft\n\nQ: visceral\nA: cerebral\n\nQ: hard\nA: soft\n\nQ: premature\nA: mature\n\nQ: little\nA: big\n\nQ: knowledge\nA: ignorance\n\nQ: reduction\nA: increase\n\nQ: longitudinal\nA: latitudinal\n\nQ: fifth\nA: first\n\nQ: fertility\nA:",
+      "corrupted_prompt_str": "Q: bust\nA: mature\n\nQ: fore\nA: latitudinal\n\nQ: visceral\nA: aft\n\nQ: hard\nA: boom\n\nQ: premature\nA: increase\n\nQ: little\nA: big\n\nQ: knowledge\nA: soft\n\nQ: reduction\nA: cerebral\n\nQ: longitudinal\nA: first\n\nQ: fifth\nA: ignorance\n\nQ: fertility\nA:",
       "target_str": " infertility",
       "answer_ids": [
         47906
       ],
+      "first_token_id": 47906,
       "target_first_token_id": 47906
     }
   ]

@@ -15,6 +15,7 @@ Example:
 
 import argparse
 import csv
+import json
 import os
 import random
 import sys
@@ -63,6 +64,12 @@ def _parse_args() -> argparse.Namespace:
         help="Comma-separated demo counts (e.g. 1,3,5)",
     )
     parser.add_argument(
+        "--demo_mode",
+        choices=["standard", "repeated_oneshot", "both"],
+        default="standard",
+        help="Demo mode: standard, repeated_oneshot, or both.",
+    )
+    parser.add_argument(
         "--n_trials",
         type=int,
         required=True,
@@ -99,26 +106,47 @@ def _read_relation_csv(path: str) -> List[Dict[str, str]]:
                 f"in {path}"
             )
         rows = []
-        for row in reader:
+        for row_idx, row in enumerate(reader):
             q_id = (row.get(col_q) or "").strip()
             inp = (row.get(col_in) or "").strip()
             out = (row.get(col_out) or "").strip()
             if not q_id or not inp or not out:
                 continue
-            rows.append({"q_id": q_id, "input": inp, "output": out})
+            rows.append(
+                {
+                    "row_id": row_idx,
+                    "q_id": q_id,
+                    "input": inp,
+                    "output": out,
+                }
+            )
         return rows
 
 
-def _group_by_qid(rows: Iterable[Dict[str, str]]) -> Dict[str, List[Tuple[str, str]]]:
-    grouped: Dict[str, List[Tuple[str, str]]] = {}
+def _group_by_qid(rows: Iterable[Dict[str, str]]) -> Dict[str, List[Dict[str, str]]]:
+    grouped: Dict[str, List[Dict[str, str]]] = {}
     for row in rows:
-        grouped.setdefault(row["q_id"], []).append((row["input"], row["output"]))
+        grouped.setdefault(row["q_id"], []).append(row)
     return grouped
 
 
-def _select_query(pair_list: List[Tuple[str, str]]) -> Tuple[str, str]:
-    sorted_pairs = sorted(pair_list, key=lambda x: (x[0], x[1]))
-    return sorted_pairs[0]
+def _select_query(rows: List[Dict[str, str]]) -> Dict[str, str]:
+    sorted_rows = sorted(rows, key=lambda x: (x["input"], x["output"]))
+    return sorted_rows[0]
+
+
+def sample_standard_demos(
+    demo_rows: List[Dict[str, str]], n_demos: int, rng: random.Random
+) -> List[Dict[str, str]]:
+    return rng.sample(demo_rows, n_demos)
+
+
+def make_repeated_oneshot_demos(
+    standard_demos: List[Dict[str, str]], rng: random.Random
+) -> Tuple[List[Dict[str, str]], Dict[str, str]]:
+    repeated_demo = rng.choice(standard_demos)
+    repeated_demos = [repeated_demo] * len(standard_demos)
+    return repeated_demos, repeated_demo
 
 
 def _target_first_token_id(
@@ -166,6 +194,23 @@ def main() -> int:
     if not qids:
         raise ValueError("No q_id found in query relation file")
 
+    enabled_modes = (
+        ["standard", "repeated_oneshot"]
+        if args.demo_mode == "both"
+        else [args.demo_mode]
+    )
+    valid_pairs: List[Tuple[str, int]] = []
+    for q_id in qids:
+        if not query_by_qid.get(q_id):
+            continue
+        demo_rows_for_qid = demo_by_qid.get(q_id, [])
+        for n_demos in demo_counts:
+            if len(demo_rows_for_qid) >= n_demos:
+                valid_pairs.append((q_id, n_demos))
+    total_expected = len(valid_pairs) * args.n_trials * len(enabled_modes)
+    completed = 0
+    last_percent = -1
+
     spec = get_model_spec(args.model_spec)
     tok_add_special = bool(spec.prepend_bos)
 
@@ -211,83 +256,136 @@ def main() -> int:
                 "target_logprob",
                 "prompt_len_tokens",
                 "seed",
+                "demo_mode",
+                "trial_idx",
+                "demo_ids",
+                "repeated_demo_id",
             ]
         )
 
-        for q_id in qids:
-            query_pairs = query_by_qid.get(q_id, [])
-            if not query_pairs:
-                print(f"skip q_id={q_id}: no query rows")
-                continue
-            demo_pairs = demo_by_qid.get(q_id, [])
+        sum_logit: Dict[str, float] = {mode: 0.0 for mode in enabled_modes}
+        sum_logprob: Dict[str, float] = {mode: 0.0 for mode in enabled_modes}
+        count: Dict[str, int] = {mode: 0 for mode in enabled_modes}
+        sum_delta_logit = 0.0
+        sum_delta_logprob = 0.0
+        delta_count = 0
 
-            query = _select_query(query_pairs)
-            query_input, target_str = query
+        for q_id in qids:
+            query_rows_for_qid = query_by_qid.get(q_id, [])
+            demo_rows_for_qid = demo_by_qid.get(q_id, [])
+
+            query_row = _select_query(query_rows_for_qid)
+            query_input = query_row["input"]
+            target_str = query_row["output"]
 
             for n_demos in demo_counts:
-                if len(demo_pairs) < n_demos:
-                    print(
-                        f"skip q_id={q_id} n_demos={n_demos}: "
-                        f"demo pool {len(demo_pairs)} < {n_demos}"
-                    )
+                if len(demo_rows_for_qid) < n_demos:
                     continue
 
                 for trial_index in range(args.n_trials):
-                    demos = rng.sample(demo_pairs, n_demos)
-                    rng.shuffle(demos)
-                    prefix_str, _full_str = build_prompt_qa(
-                        demos,
-                        query,
-                        prepend_bos_token=False,
-                        prepend_space=True,
+                    standard_demos = sample_standard_demos(
+                        demo_rows_for_qid, n_demos, rng
                     )
-                    target_id = _target_first_token_id(
-                        tokenizer, prefix_str, target_str, tok_add_special
-                    )
-                    inputs = tokenizer(
-                        prefix_str,
-                        return_tensors="pt",
-                        add_special_tokens=tok_add_special,
-                    ).to(device)
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    next_logits = outputs.logits[0, -1, :]
-                    next_logprobs = torch.log_softmax(next_logits, dim=-1)
-                    target_logit = float(next_logits[target_id].item())
-                    target_logprob = float(next_logprobs[target_id].item())
-                    prompt_len_tokens = int(inputs["input_ids"].shape[-1])
-                    target_token_str = tokenizer.decode([target_id])
-                    writer.writerow(
-                        [
-                            q_id,
-                            trial_index,
-                            args.demo_relation_path,
-                            args.query_relation_path,
-                            n_demos,
-                            query_input,
-                            target_str,
-                            target_id,
-                            target_token_str,
-                            target_logit,
-                            target_logprob,
-                            prompt_len_tokens,
-                            args.seed,
-                        ]
+                    repeated_demos, repeated_demo = make_repeated_oneshot_demos(
+                        standard_demos, rng
                     )
 
-                    if trial_index == 0:
-                        print("[SMOKE]")
-                        print(f"q_id={q_id} n_demos={n_demos}")
-                        print(f"query_input={repr(query_input)}")
-                        print(f"target_str={repr(target_str)}")
-                        print(f"demos_sample={demos[:2]}")
-                        print(f"prompt_tail={repr(prefix_str[-150:])}")
-                        print(f"target_id={target_id}")
-                        print(f"target_token_str={repr(target_token_str)}")
-                        print(f"target_logit={target_logit}")
-                        print(f"target_logprob={target_logprob}")
+                    trial_scores: Dict[str, Tuple[float, float]] = {}
+                    for demo_mode, demos_rows in (
+                        ("standard", standard_demos),
+                        ("repeated_oneshot", repeated_demos),
+                    ):
+                        if args.demo_mode != "both" and demo_mode != args.demo_mode:
+                            continue
+
+                        demos = [(row["input"], row["output"]) for row in demos_rows]
+                        prefix_str, _full_str = build_prompt_qa(
+                            demos,
+                            (query_input, target_str),
+                            prepend_bos_token=False,
+                            prepend_space=True,
+                        )
+                        target_id = _target_first_token_id(
+                            tokenizer, prefix_str, target_str, tok_add_special
+                        )
+                        inputs = tokenizer(
+                            prefix_str,
+                            return_tensors="pt",
+                            add_special_tokens=tok_add_special,
+                        ).to(device)
+                        with torch.no_grad():
+                            outputs = model(**inputs)
+                        next_logits = outputs.logits[0, -1, :]
+                        next_logprobs = torch.log_softmax(next_logits, dim=-1)
+                        target_logit = float(next_logits[target_id].item())
+                        target_logprob = float(next_logprobs[target_id].item())
+                        prompt_len_tokens = int(inputs["input_ids"].shape[-1])
+                        target_token_str = tokenizer.decode([target_id])
+                        demo_ids = [row["row_id"] for row in demos_rows]
+                        repeated_demo_id = (
+                            repeated_demo["row_id"]
+                            if demo_mode == "repeated_oneshot"
+                            else ""
+                        )
+                        writer.writerow(
+                            [
+                                q_id,
+                                trial_index,
+                                args.demo_relation_path,
+                                args.query_relation_path,
+                                n_demos,
+                                query_input,
+                                target_str,
+                                target_id,
+                                target_token_str,
+                                target_logit,
+                                target_logprob,
+                                prompt_len_tokens,
+                                args.seed,
+                                demo_mode,
+                                trial_index,
+                                json.dumps(demo_ids),
+                                repeated_demo_id,
+                            ]
+                        )
+
+                        sum_logit[demo_mode] += target_logit
+                        sum_logprob[demo_mode] += target_logprob
+                        count[demo_mode] += 1
+                        trial_scores[demo_mode] = (target_logit, target_logprob)
+
+                        completed += 1
+                        if total_expected:
+                            percent = int((completed / total_expected) * 100)
+                            if percent != last_percent:
+                                print(f"progress: {percent}%")
+                                last_percent = percent
+
+                    if args.demo_mode == "both":
+                        if "standard" in trial_scores and "repeated_oneshot" in trial_scores:
+                            std_logit, std_logprob = trial_scores["standard"]
+                            rep_logit, rep_logprob = trial_scores["repeated_oneshot"]
+                            sum_delta_logit += rep_logit - std_logit
+                            sum_delta_logprob += rep_logprob - std_logprob
+                            delta_count += 1
 
     print(f"wrote {args.out_csv}")
+    for mode in enabled_modes:
+        if count[mode]:
+            mean_logit = sum_logit[mode] / count[mode]
+            mean_logprob = sum_logprob[mode] / count[mode]
+            print(
+                f"summary {mode}: n={count[mode]} "
+                f"mean_logit={mean_logit:.6f} mean_logprob={mean_logprob:.6f}"
+            )
+    if args.demo_mode == "both" and delta_count:
+        mean_delta_logit = sum_delta_logit / delta_count
+        mean_delta_logprob = sum_delta_logprob / delta_count
+        print(
+            "summary delta(repeated-standard): "
+            f"n={delta_count} mean_delta_logit={mean_delta_logit:.6f} "
+            f"mean_delta_logprob={mean_delta_logprob:.6f}"
+        )
     return 0
 
 

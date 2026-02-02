@@ -393,12 +393,17 @@ def _boundary_prefix_and_answer_from_full(prefix_str: str, full_str: str):
     return prefix_str, answer_str
 
 
-def compute_trial_metrics(logits_base, logits_patch, target_id):
+def compute_trial_metrics(logits_base, logits_patch, target_id, compute_prob_scores: bool = True):
     import torch.nn.functional as F
 
-    p_base = F.softmax(logits_base, dim=-1)[target_id].item()
-    p_patch = F.softmax(logits_patch, dim=-1)[target_id].item()
-    delta_p = p_patch - p_base
+    if compute_prob_scores:
+        p_base = F.softmax(logits_base, dim=-1)[target_id].item()
+        p_patch = F.softmax(logits_patch, dim=-1)[target_id].item()
+        delta_p = p_patch - p_base
+    else:
+        p_base = None
+        p_patch = None
+        delta_p = None
 
     logit_base = logits_base[target_id].item()
     logit_patch = logits_patch[target_id].item()
@@ -575,7 +580,12 @@ def check_successful_icl(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="STEP D AIE head sweep.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "STEP D AIE head sweep. mean_delta_p = p_patch - p_base on the target "
+            "first token (comparable to paper indirect_effect)."
+        )
+    )
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
     parser.add_argument(
         "--dataset_path",
@@ -652,6 +662,17 @@ def main() -> int:
         "--fixed_trials_path",
         default=None,
         help="Optional fixed_trials.json path for deterministic trials",
+    )
+    parser.add_argument(
+        "--compute_prob_scores",
+        type=int,
+        default=1,
+        help="If 1, compute probability-based scores (delta_p).",
+    )
+    parser.add_argument(
+        "--fixed_out_dir",
+        default=None,
+        help="When using fixed_trials, write outputs under this directory",
     )
     parser.add_argument(
         "--relation_csv_path",
@@ -798,11 +819,23 @@ def main() -> int:
         return 1
 
     run_info = prepare_run_dirs(args.run_id)
-    if args.out_dir:
-        artifacts_dir = resolve_out_dir(args.out_dir)
+    if args.fixed_trials_path and args.fixed_out_dir:
+        base_dir = resolve_out_dir(args.fixed_out_dir)
+        artifacts_dir = os.path.join(base_dir, "artifacts")
+        logs_dir = os.path.join(base_dir, "logs")
+        os.makedirs(artifacts_dir, exist_ok=True)
+        os.makedirs(logs_dir, exist_ok=True)
+        run_info = {
+            "run_id": os.path.basename(base_dir),
+            "artifacts_dir": artifacts_dir,
+            "logs_dir": logs_dir,
+        }
     else:
-        artifacts_dir = run_info["artifacts_dir"]
-    os.makedirs(artifacts_dir, exist_ok=True)
+        if args.out_dir:
+            artifacts_dir = resolve_out_dir(args.out_dir)
+        else:
+            artifacts_dir = run_info["artifacts_dir"]
+        os.makedirs(artifacts_dir, exist_ok=True)
 
     log_path = os.path.join(run_info["logs_dir"], "stepD_aie.log")
     log, log_file = make_logger(log_path)
@@ -823,6 +856,7 @@ def main() -> int:
     log(f"max_trial_attempts: {args.max_trial_attempts}")
     log(f"seed: {args.seed}")
     log(f"score_key: {args.score_key}")
+    log(f"compute_prob_scores: {args.compute_prob_scores}")
     log(f"shuffle_labels: {args.shuffle_labels}")
     log(f"fixed_trials_path: {args.fixed_trials_path}")
     log(f"relation_csv_path: {args.relation_csv_path}")
@@ -1979,6 +2013,9 @@ def main() -> int:
         "p_base",
         "p_patch",
         "delta_p",
+        "p_base_target",
+        "p_patch_target",
+        "delta_p_target",
         "logit_base",
         "logit_patch",
         "delta_logit",
@@ -2109,12 +2146,23 @@ def main() -> int:
 
             patched_logits = outputs_patched.logits[0, -1]
             trial_metrics = compute_trial_metrics(
-                baseline_logits, patched_logits, target_id
+                baseline_logits,
+                patched_logits,
+                target_id,
+                compute_prob_scores=bool(args.compute_prob_scores),
             )
-            for key, value in trial_metrics.items():
-                metric_lists[key].append(value)
-            if abs(trial_metrics["delta_p"]) > 1e-12:
-                nonzero = True
+            if args.compute_prob_scores:
+                metric_lists["p_base"].append(trial_metrics["p_base"])
+                metric_lists["p_patch"].append(trial_metrics["p_patch"])
+                metric_lists["delta_p"].append(trial_metrics["delta_p"])
+                if abs(trial_metrics["delta_p"]) > 1e-12:
+                    nonzero = True
+            metric_lists["logit_base"].append(trial_metrics["logit_base"])
+            metric_lists["logit_patch"].append(trial_metrics["logit_patch"])
+            metric_lists["delta_logit"].append(trial_metrics["delta_logit"])
+            metric_lists["logprob_base"].append(trial_metrics["logprob_base"])
+            metric_lists["logprob_patch"].append(trial_metrics["logprob_patch"])
+            metric_lists["delta_logprob"].append(trial_metrics["delta_logprob"])
 
             trial_row = {
                 "trial_idx": trial["trial_idx"],
@@ -2133,6 +2181,9 @@ def main() -> int:
                 "p_base": trial_metrics["p_base"],
                 "p_patch": trial_metrics["p_patch"],
                 "delta_p": trial_metrics["delta_p"],
+                "p_base_target": trial_metrics["p_base"],
+                "p_patch_target": trial_metrics["p_patch"],
+                "delta_p_target": trial_metrics["delta_p"],
                 "logit_base": trial_metrics["logit_base"],
                 "logit_patch": trial_metrics["logit_patch"],
                 "delta_logit": trial_metrics["delta_logit"],
@@ -2165,6 +2216,9 @@ def main() -> int:
                             "p_base": trial_metrics["p_base"],
                             "p_patch": trial_metrics["p_patch"],
                             "delta_p": trial_metrics["delta_p"],
+                            "p_base_target": trial_metrics["p_base"],
+                            "p_patch_target": trial_metrics["p_patch"],
+                            "delta_p_target": trial_metrics["delta_p"],
                             "logit_base": trial_metrics["logit_base"],
                             "logit_patch": trial_metrics["logit_patch"],
                             "delta_logit": trial_metrics["delta_logit"],
@@ -2200,6 +2254,9 @@ def main() -> int:
                         "p_base": trial_metrics["p_base"],
                         "p_patch": trial_metrics["p_patch"],
                         "delta_p": trial_metrics["delta_p"],
+                        "p_base_target": trial_metrics["p_base"],
+                        "p_patch_target": trial_metrics["p_patch"],
+                        "delta_p_target": trial_metrics["delta_p"],
                         "logit_base": trial_metrics["logit_base"],
                         "logit_patch": trial_metrics["logit_patch"],
                         "delta_logit": trial_metrics["delta_logit"],
@@ -2217,6 +2274,12 @@ def main() -> int:
         std_p_base = std(metric_lists["p_base"])
         mean_p_patch = mean(metric_lists["p_patch"])
         std_p_patch = std(metric_lists["p_patch"])
+        if args.compute_prob_scores and not (-1.000001 <= mean_delta_p <= 1.000001):
+            log(
+                f"[WARN] mean_delta_p out of range: {mean_delta_p:.6f} "
+                f"(layer={layer} head={head})"
+            )
+            assert -1.000001 <= mean_delta_p <= 1.000001
 
         mean_delta_logit = mean(metric_lists["delta_logit"])
         std_delta_logit = std(metric_lists["delta_logit"])
@@ -2241,6 +2304,9 @@ def main() -> int:
                 "std_p_base": std_p_base,
                 "mean_p_patch": mean_p_patch,
                 "std_p_patch": std_p_patch,
+                "mean_p_base_target": mean_p_base,
+                "mean_p_patch_target": mean_p_patch,
+                "mean_delta_p_target": mean_delta_p,
                 "mean_delta_logit": mean_delta_logit,
                 "std_delta_logit": std_delta_logit,
                 "mean_abs_delta_logit": mean_abs_delta_logit,

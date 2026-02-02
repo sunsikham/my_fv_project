@@ -11,13 +11,25 @@ try:
     from src.utils.intervention_utils import *
     from src.utils.model_utils import *
     from src.utils.extract_utils import *
-    from src.utils.fixed_trials_utils import load_fixed_trials, iter_fixed_trials
 except ImportError:
     from utils.prompt_utils import *
     from utils.intervention_utils import *
     from utils.model_utils import *
     from utils.extract_utils import *
-    from utils.fixed_trials_utils import load_fixed_trials, iter_fixed_trials
+
+try:
+    # fixed trials adapter (paper-exact order)
+    from fv.fixed_trials_adapter import (
+        load_fixed_trials,
+        iter_fixed_trials,
+        get_mean_head_activations_from_fixed_trials_paper_exact,
+    )
+except ImportError:
+    from fixed_trials_adapter import (
+        load_fixed_trials,
+        iter_fixed_trials,
+        get_mean_head_activations_from_fixed_trials_paper_exact,
+    )
 
 try:
     from fv.relation_trials import generate_relation_trials
@@ -247,8 +259,8 @@ def compute_indirect_effect(
             raise ValueError("No trials found in fixed_trials.json")
         prompt_data_first = trials_list[0]["prompt_data_corrupted"]
         n_shots = len(prompt_data_first["examples"])
-        prefixes = prompt_data_first["prefixes"]
-        separators = prompt_data_first["separators"]
+        prefixes = prompt_data_first.get("prefixes", prefixes)
+        separators = prompt_data_first.get("separators", separators)
 
     if prefixes is not None and separators is not None:
         dummy_gt_labels = get_dummy_token_labels(n_shots, tokenizer=tokenizer, prefixes=prefixes, separators=separators, model_config=model_config)
@@ -290,9 +302,13 @@ def compute_indirect_effect(
             indirect_effect[i] = ind_effects.squeeze()
     else:
         n_trials_to_use = min(n_trials, len(trials_list))
-        for i, (prompt_data, _, target_first_token_id) in enumerate(iter_fixed_trials(fixed_trials, mode="corrupted")):
-            if i >= n_trials_to_use:
-                break
+        for i, trial in enumerate(trials_list[:n_trials_to_use]):
+            prompt_data = trial.get("prompt_data_corrupted")
+            if prompt_data is None:
+                raise ValueError("fixed_trials missing prompt_data_corrupted")
+            target_first_token_id = trial.get("target_first_token_id")
+            if target_first_token_id is None:
+                raise ValueError("fixed_trials missing target_first_token_id")
             if dump_cfg is not None:
                 dump_cfg["trial_idx"] = i
             ind_effects = activation_replacement_per_class_intervention(
@@ -321,6 +337,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='EleutherAI/gpt-j-6b')
     parser.add_argument('--root_data_dir', help='Root directory of data files', type=str, required=False, default='../dataset_files')
     parser.add_argument('--save_path_root', help='File path to save indirect effect to', type=str, required=False, default='../results')
+    parser.add_argument('--fixed_out_dir', help='When using fixed_trials, write outputs under this directory', type=str, required=False, default=None)
     parser.add_argument('--seed', help='Randomized seed', type=int, required=False, default=42)
     parser.add_argument('--n_shots', help="Number of shots in each in-context prompt", type =int, required=False, default=10)
     parser.add_argument('--n_trials', help="Number of in-context prompts to average over", type=int, required=False, default=25)
@@ -362,6 +379,8 @@ if __name__ == "__main__":
     prefixes = args.prefixes
     separators = args.separators
     fixed_trials_path = args.fixed_trials_path
+    if fixed_trials_path and args.fixed_out_dir:
+        save_path_root = args.fixed_out_dir
     relation_csv_path = args.relation_csv_path
     relation_q_list = args.relation_q_list
     relation_n_trials_per_q = args.relation_n_trials_per_q
@@ -503,15 +522,17 @@ if __name__ == "__main__":
     else:
         print("Computing Mean Activations")
         if fixed_trials is not None:
-            mean_activations, _dummy_labels = get_mean_head_activations_from_fixed_trials(
-                fixed_trials,
-                model=model,
-                model_config=model_config,
-                tokenizer=tokenizer,
-                mode="corrupted",
-                n_use=n_trials,
-                prefixes=prefixes,
-                separators=separators,
+            mean_activations, _dummy_labels = (
+                get_mean_head_activations_from_fixed_trials_paper_exact(
+                    fixed_trials_or_path=fixed_trials,
+                    model=model,
+                    model_config=model_config,
+                    tokenizer=tokenizer,
+                    mode="clean",
+                    n_use=n_trials,
+                    prefixes=prefixes,
+                    separators=separators,
+                )
             )
         else:
             mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
