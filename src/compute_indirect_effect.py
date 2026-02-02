@@ -1,4 +1,5 @@
 import os, re, json
+from pathlib import Path
 from tqdm import tqdm
 import torch, numpy as np
 import argparse
@@ -10,8 +11,7 @@ from utils.intervention_utils import *
 from utils.model_utils import *
 from utils.extract_utils import *
 
-
-def activation_replacement_per_class_intervention(prompt_data, avg_activations, dummy_labels, model, model_config, tokenizer, last_token_only=True):
+def activation_replacement_per_class_intervention(prompt_data, avg_activations, dummy_labels, model, model_config, tokenizer, last_token_only=True, token_id_of_interest=None):
     """
     Experiment to determine top intervention locations through avg activation replacement. 
     Performs a systematic sweep over attention heads (layer, head) to track their causal influence on probs of key tokens.
@@ -42,8 +42,13 @@ def activation_replacement_per_class_intervention(prompt_data, avg_activations, 
     sentences = [prompt_string]# * model.config.n_head # batch things by head
 
     # Figure out tokens of interest
-    target = [query_target_pair['output']]
-    token_id_of_interest = get_answer_id(sentences[0], target[0], tokenizer)
+    if token_id_of_interest is None:
+        target = [query_target_pair['output']]
+        token_id_of_interest = get_answer_id(sentences[0], target[0], tokenizer)
+    if isinstance(token_id_of_interest, list):
+        token_id_of_interest = token_id_of_interest[:1]
+    else:
+        token_id_of_interest = [int(token_id_of_interest)]
     if isinstance(token_id_of_interest, list):
         token_id_of_interest = token_id_of_interest[:1]
         
@@ -90,7 +95,7 @@ def activation_replacement_per_class_intervention(prompt_data, avg_activations, 
     return indirect_effect_storage
 
 
-def compute_indirect_effect(dataset, mean_activations, model, model_config, tokenizer, n_shots=10, n_trials=25, last_token_only=True, prefixes=None, separators=None, filter_set=None):
+def compute_indirect_effect(dataset, mean_activations, model, model_config, tokenizer, n_shots=10, n_trials=25, last_token_only=True, prefixes=None, separators=None, filter_set=None, fixed_trials=None):
     """
     Computes Indirect Effect of each head in the model
 
@@ -109,6 +114,21 @@ def compute_indirect_effect(dataset, mean_activations, model, model_config, toke
     indirect_effect: torch tensor of the indirect effect for each attention head in the model, size n_trials * n_layers * n_heads
     """
     n_test_examples = 1
+    trials = None
+    if fixed_trials is not None:
+        trials = fixed_trials.get("trials", [])
+        if not trials:
+            raise ValueError("No trials found in fixed_trials.json")
+        prompt_data_first = trials[0].get("prompt_data_corrupted")
+        if prompt_data_first is None:
+            raise ValueError("fixed_trials missing prompt_data_corrupted")
+        n_shots = len(prompt_data_first.get("examples", []))
+        if n_shots == 0:
+            raise ValueError("fixed_trials prompt_data contains zero examples")
+        if prefixes is None:
+            prefixes = prompt_data_first.get("prefixes")
+        if separators is None:
+            separators = prompt_data_first.get("separators")
 
     if prefixes is not None and separators is not None:
         dummy_gt_labels = get_dummy_token_labels(n_shots, tokenizer=tokenizer, prefixes=prefixes, separators=separators, model_config=model_config)
@@ -123,25 +143,50 @@ def compute_indirect_effect(dataset, mean_activations, model, model_config, toke
     else:
         indirect_effect = torch.zeros(n_trials,model_config['n_layers'], model_config['n_heads'],10) # have 10 classes of tokens
 
-    if filter_set is None:
-        filter_set = np.arange(len(dataset['valid']))
-    
-    for i in tqdm(range(n_trials), total=n_trials):
-        word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
-        word_pairs_test = dataset['valid'][np.random.choice(filter_set,n_test_examples, replace=False)]
-        if prefixes is not None and separators is not None:
-            prompt_data_random = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, shuffle_labels=True, 
-                                                           prepend_bos_token=prepend_bos, prefixes=prefixes, separators=separators)
-        else:
-            prompt_data_random = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, 
-                                                           shuffle_labels=True, prepend_bos_token=prepend_bos)
+    if fixed_trials is None:
+        if filter_set is None:
+            filter_set = np.arange(len(dataset['valid']))
         
-        ind_effects = activation_replacement_per_class_intervention(prompt_data=prompt_data_random, 
-                                                                    avg_activations = mean_activations, 
-                                                                    dummy_labels=dummy_gt_labels, 
-                                                                    model=model, model_config=model_config, tokenizer=tokenizer, 
-                                                                    last_token_only=last_token_only)
-        indirect_effect[i] = ind_effects.squeeze()
+        for i in tqdm(range(n_trials), total=n_trials):
+            word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
+            word_pairs_test = dataset['valid'][np.random.choice(filter_set,n_test_examples, replace=False)]
+            if prefixes is not None and separators is not None:
+                prompt_data_random = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, shuffle_labels=True, 
+                                                               prepend_bos_token=prepend_bos, prefixes=prefixes, separators=separators)
+            else:
+                prompt_data_random = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, 
+                                                               shuffle_labels=True, prepend_bos_token=prepend_bos)
+            
+            ind_effects = activation_replacement_per_class_intervention(prompt_data=prompt_data_random, 
+                                                                        avg_activations = mean_activations, 
+                                                                        dummy_labels=dummy_gt_labels, 
+                                                                        model=model, model_config=model_config, tokenizer=tokenizer, 
+                                                                        last_token_only=last_token_only)
+            indirect_effect[i] = ind_effects.squeeze()
+    else:
+        if trials is None:
+            trials = fixed_trials.get("trials", [])
+        if not trials:
+            raise ValueError("No trials found in fixed_trials.json")
+        n_trials_to_use = min(n_trials, len(trials))
+        for i, trial in enumerate(trials[:n_trials_to_use]):
+            prompt_data = trial.get("prompt_data_corrupted")
+            if prompt_data is None:
+                raise ValueError("fixed_trials missing prompt_data_corrupted")
+            target_first_token_id = trial.get("target_first_token_id")
+            if target_first_token_id is None:
+                raise ValueError("fixed_trials missing target_first_token_id")
+            ind_effects = activation_replacement_per_class_intervention(
+                prompt_data=prompt_data,
+                avg_activations=mean_activations,
+                dummy_labels=dummy_gt_labels,
+                model=model,
+                model_config=model_config,
+                tokenizer=tokenizer,
+                last_token_only=last_token_only,
+                token_id_of_interest=target_first_token_id,
+            )
+            indirect_effect[i] = ind_effects.squeeze()
 
     return indirect_effect
 
@@ -150,7 +195,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset_name', help='Name of the dataset to be loaded', type=str, required=True)
+    parser.add_argument('--dataset_name', help='Name of the dataset to be loaded', type=str, required=False)
     parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='EleutherAI/gpt-j-6b')
     parser.add_argument('--root_data_dir', help='Root directory of data files', type=str, required=False, default='../dataset_files')
     parser.add_argument('--save_path_root', help='File path to save indirect effect to', type=str, required=False, default='../results')
@@ -164,19 +209,24 @@ if __name__ == "__main__":
     parser.add_argument('--prefixes', help='Prompt template prefixes to be used', type=json.loads, required=False, default={"input":"Q:", "output":"A:", "instructions":""})
     parser.add_argument('--separators', help='Prompt template separators to be used', type=json.loads, required=False, default={"input":"\n", "output":"\n\n", "instructions":""})    
     parser.add_argument('--revision', help='Specify model checkpoints for pythia or olmo models', type=str, required=False, default=None)
+    parser.add_argument('--fixed_trials_path', help='Optional fixed_trials.json path', type=str, required=False, default=None)
+    parser.add_argument('--fixed_out_dir', help='When using fixed_trials, write outputs under this directory', type=str, required=False, default=None)
         
     args = parser.parse_args()
 
     dataset_name = args.dataset_name
     model_name = args.model_name
     root_data_dir = args.root_data_dir
-    save_path_root = f"{args.save_path_root}/{dataset_name}"
+    save_path_root = args.save_path_root
     seed = args.seed
     n_shots = args.n_shots
     n_trials = args.n_trials
     test_split = args.test_split
     device = args.device
     mean_activations_path = args.mean_activations_path
+    fixed_trials_path = args.fixed_trials_path
+    if fixed_trials_path and args.fixed_out_dir:
+        save_path_root = args.fixed_out_dir
     last_token_only = args.last_token_only
     prefixes = args.prefixes
     separators = args.separators
@@ -187,13 +237,23 @@ if __name__ == "__main__":
     print("Loading Model")
     model, tokenizer, model_config = load_gpt_model_and_tokenizer(model_name, device=device, revision=args.revision)
 
-    set_seed(seed)
-
-    # Load the dataset
-    print("Loading Dataset")
-    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
+    fixed_trials = None
+    if fixed_trials_path is not None:
+        with open(fixed_trials_path, "r") as fixed_file:
+            fixed_trials = json.load(fixed_file)
+        if dataset_name is None:
+            dataset_name = Path(fixed_trials_path).stem
+    else:
+        if dataset_name is None:
+            raise ValueError("Missing --dataset_name (or provide --fixed_trials_path)")
+        set_seed(seed)
+        # Load the dataset
+        print("Loading Dataset")
+        dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
     
 
+    if dataset_name is not None:
+        save_path_root = f"{save_path_root}/{dataset_name}"
     if not os.path.exists(save_path_root):
         os.makedirs(save_path_root)
 
@@ -205,13 +265,25 @@ if __name__ == "__main__":
         mean_activations = torch.load(mean_activations_path)        
     else:
         print("Computing Mean Activations")
-        mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
-                                                     n_icl_examples=n_shots, N_TRIALS=n_trials, prefixes=prefixes, separators=separators)
+        if fixed_trials is not None:
+            mean_activations, _dummy_labels = get_mean_head_activations_from_fixed_trials(
+                fixed_trials=fixed_trials,
+                model=model,
+                model_config=model_config,
+                tokenizer=tokenizer,
+                mode="clean",
+                n_use=n_trials,
+                prefixes=prefixes,
+                separators=separators,
+            )
+        else:
+            mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
+                                                         n_icl_examples=n_shots, N_TRIALS=n_trials, prefixes=prefixes, separators=separators)
         torch.save(mean_activations, f'{save_path_root}/{dataset_name}_mean_head_activations.pt')
 
     print("Computing Indirect Effect")
-    indirect_effect = compute_indirect_effect(dataset, mean_activations, model=model, model_config=model_config, tokenizer=tokenizer, 
-                                              n_shots=n_shots, n_trials=n_trials, last_token_only=last_token_only, prefixes=prefixes, separators=separators)
+    indirect_effect = compute_indirect_effect(dataset if fixed_trials is None else None, mean_activations, model=model, model_config=model_config, tokenizer=tokenizer, 
+                                              n_shots=n_shots, n_trials=n_trials, last_token_only=last_token_only, prefixes=prefixes, separators=separators, fixed_trials=fixed_trials)
 
     # Write args to file
     args.save_path_root = save_path_root
