@@ -819,7 +819,7 @@ def main() -> int:
         print("--relation_n_trials_per_q is required with --relation_csv_path.")
         return 1
 
-    run_info = prepare_run_dirs(args.run_id)
+    run_info = prepare_run_dirs(args.run_id, base_dir="results/attention_head")
     if args.fixed_trials_path and args.fixed_out_dir:
         base_dir = resolve_out_dir(args.fixed_out_dir)
         artifacts_dir = os.path.join(base_dir, "artifacts")
@@ -1347,10 +1347,13 @@ def main() -> int:
                     return 1
             trials.append(
                 {
+                    "q_id": trial.get("q_id"),
                     "trial_idx": trial_idx,
                     "clean_prefix_str": fixed_clean,
                     "corrupted_prefix_str": fixed_corrupted,
                     "corrupted_full_str": corrupted_full_str,
+                    "prompt_data_clean": trial.get("prompt_data_clean"),
+                    "prompt_data_corrupted": trial.get("prompt_data_corrupted"),
                     "target_id": target_id,
                     "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": None,
@@ -1855,6 +1858,283 @@ def main() -> int:
             log_file.close()
             return 1
         layer_modules[layer] = target_module
+
+    if args.relation_csv_path:
+        # q_id-specific mean activations and CIE/AIE aggregation.
+        trials_by_qid = {}
+        for trial in trials:
+            q_id = trial.get("q_id")
+            if q_id is None:
+                log("relation mode requires q_id in trials")
+                log_file.close()
+                return 1
+            trials_by_qid.setdefault(q_id, []).append(trial)
+
+        trial_metrics_path = os.path.join(artifacts_dir, "trial_metrics.jsonl")
+        trial_metrics_file = open(trial_metrics_path, "w", encoding="utf-8")
+
+        cie_rows = []
+        aie_accumulator = {}
+        aie_counts = {}
+
+        log("starting AIE sweep (qid-specific mean activations)")
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = None
+
+        pairs = [(layer, head) for layer in layers for head in heads]
+        total = len(pairs)
+        log_every = max(1, total // 100)
+
+        for q_id, q_trials in sorted(trials_by_qid.items()):
+            log(f"[qid] computing mean_activations for {q_id} n_trials={len(q_trials)}")
+            fixed_subset = {"trials": q_trials}
+            try:
+                mean_acts, dummy_labels, slot_index_map = (
+                    compute_mean_activations_fixed_trials_ns(
+                        model=model,
+                        tokenizer=tokenizer,
+                        layer_modules=layer_modules,
+                        fixed_trials=fixed_subset,
+                        n_use=len(q_trials),
+                        model_cfg=model_cfg,
+                        tok_add_special=tok_add_special,
+                        device=device,
+                        logger=log,
+                    )
+                )
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                trial_metrics_file.close()
+                return 1
+
+            slot_q = slot_index_map.get("QUERY_PRED")
+            if slot_q is None:
+                log("QUERY_PRED missing from slot_index_map")
+                log_file.close()
+                trial_metrics_file.close()
+                return 1
+
+            pbar = (
+                tqdm(pairs, total=total, desc=f"StepD {q_id}", unit="head")
+                if tqdm is not None
+                else None
+            )
+            start_time = time.time()
+            for idx_pair, (layer, head) in enumerate(pairs, start=1):
+                if pbar is not None:
+                    pbar.set_postfix({"layer": layer, "head": head})
+                if idx_pair == 1 or idx_pair % log_every == 0 or idx_pair == total:
+                    elapsed = time.time() - start_time
+                    rate = idx_pair / elapsed if elapsed > 0 else 0.0
+                    remaining = total - idx_pair
+                    eta = remaining / rate if rate > 0 else 0.0
+                    percent = (idx_pair / total) * 100 if total else 100.0
+                    log(
+                        "[StepD] "
+                        f"{percent:.1f}% ({idx_pair}/{total}) "
+                        f"layer={layer} head={head} "
+                        f"elapsed={format_duration(elapsed)} "
+                        f"ETA={format_duration(eta)}"
+                    )
+
+                metric_lists = {
+                    "p_base": [],
+                    "p_patch": [],
+                    "delta_p": [],
+                    "logit_base": [],
+                    "logit_patch": [],
+                    "delta_logit": [],
+                    "logprob_base": [],
+                    "logprob_patch": [],
+                    "delta_logprob": [],
+                }
+                nonzero = False
+                replace_vec = mean_acts[layer, head, slot_q]
+                hook_state = {"mode": "self", "replace_vec": None, "seq_token_idx": None}
+                hook = make_out_proj_head_output_overrider(
+                    layer_idx=layer,
+                    head_idx=head,
+                    seq_token_idx=0,
+                    mode="self",
+                    replace_vec=None,
+                    model_config=model_cfg,
+                    resolved_quant=resolved_quant,
+                    force_recompute_outproj=baseline_recompute_outproj,
+                    state=hook_state,
+                    logger=log,
+                )
+                for trial in q_trials:
+                    prefix_str = trial["corrupted_prefix_str"]
+                    target_id = trial["target_id"]
+                    seq_token_idx = trial["seq_token_idx"]
+                    hook_state["seq_token_idx"] = seq_token_idx
+
+                    inputs = tokenizer(
+                        prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
+                    )
+                    inputs = {key: value.to(device) for key, value in inputs.items()}
+                    hook_state["mode"] = "self"
+                    hook_state["replace_vec"] = None
+                    handle_base = layer_modules[layer].register_forward_hook(hook)
+                    with torch.inference_mode():
+                        outputs = model(**inputs)
+                    handle_base.remove()
+                    baseline_logits = outputs.logits[0, -1]
+
+                    hook_state["mode"] = "replace"
+                    hook_state["replace_vec"] = replace_vec
+                    handle = layer_modules[layer].register_forward_hook(hook)
+                    with torch.inference_mode():
+                        outputs_patched = model(**inputs)
+                    handle.remove()
+
+                    patched_logits = outputs_patched.logits[0, -1]
+                    trial_metrics = compute_trial_metrics(
+                        baseline_logits,
+                        patched_logits,
+                        target_id,
+                        compute_prob_scores=bool(args.compute_prob_scores),
+                    )
+                    if args.compute_prob_scores:
+                        metric_lists["p_base"].append(trial_metrics["p_base"])
+                        metric_lists["p_patch"].append(trial_metrics["p_patch"])
+                        metric_lists["delta_p"].append(trial_metrics["delta_p"])
+                        if abs(trial_metrics["delta_p"]) > 1e-12:
+                            nonzero = True
+                    metric_lists["logit_base"].append(trial_metrics["logit_base"])
+                    metric_lists["logit_patch"].append(trial_metrics["logit_patch"])
+                    metric_lists["delta_logit"].append(trial_metrics["delta_logit"])
+                    metric_lists["logprob_base"].append(trial_metrics["logprob_base"])
+                    metric_lists["logprob_patch"].append(trial_metrics["logprob_patch"])
+                    metric_lists["delta_logprob"].append(trial_metrics["delta_logprob"])
+
+                    trial_row = {
+                        "q_id": q_id,
+                        "trial_idx": trial["trial_idx"],
+                        "layer": layer,
+                        "head": head,
+                        "target_id": target_id,
+                        "target_token": tokenizer.convert_ids_to_tokens(target_id),
+                        "seed_global": args.seed,
+                        "shuffle_labels": bool(args.shuffle_labels),
+                        "shuffle_derangement": False,
+                        "n_icl_examples": args.n_icl_examples,
+                        "demo_perm": trial.get("demo_perm"),
+                        "demo_fixed_points": trial.get("demo_fixed_points"),
+                        "demo_outputs_before": trial.get("demo_outputs_before"),
+                        "demo_outputs_after": trial.get("demo_outputs_after"),
+                        "p_base": trial_metrics["p_base"],
+                        "p_patch": trial_metrics["p_patch"],
+                        "delta_p": trial_metrics["delta_p"],
+                        "p_base_target": trial_metrics["p_base"],
+                        "p_patch_target": trial_metrics["p_patch"],
+                        "delta_p_target": trial_metrics["delta_p"],
+                        "logit_base": trial_metrics["logit_base"],
+                        "logit_patch": trial_metrics["logit_patch"],
+                        "delta_logit": trial_metrics["delta_logit"],
+                        "logprob_base": trial_metrics["logprob_base"],
+                        "logprob_patch": trial_metrics["logprob_patch"],
+                        "delta_logprob": trial_metrics["delta_logprob"],
+                        "prompt_tail_repr": repr(prefix_str[-30:]),
+                        "prompt_ends_with_space": prefix_str.endswith(" "),
+                        "slot_idx": slot_q,
+                        "seq_token_idx": seq_token_idx,
+                    }
+                    trial_metrics_file.write(
+                        json.dumps(trial_row, ensure_ascii=True, default=_json_safe) + "\n"
+                    )
+
+                mean_act_norm = mean_acts[layer, head, slot_q].norm().item()
+                mean_delta_p = mean(metric_lists["delta_p"])
+                std_delta_p = std(metric_lists["delta_p"])
+                mean_abs_delta_p = mean_abs(metric_lists["delta_p"])
+                mean_p_base = mean(metric_lists["p_base"])
+                std_p_base = std(metric_lists["p_base"])
+                mean_p_patch = mean(metric_lists["p_patch"])
+                std_p_patch = std(metric_lists["p_patch"])
+                mean_delta_logit = mean(metric_lists["delta_logit"])
+                std_delta_logit = std(metric_lists["delta_logit"])
+                mean_abs_delta_logit = mean_abs(metric_lists["delta_logit"])
+                mean_logit_base = mean(metric_lists["logit_base"])
+                mean_logit_patch = mean(metric_lists["logit_patch"])
+                mean_delta_logprob = mean(metric_lists["delta_logprob"])
+                std_delta_logprob = std(metric_lists["delta_logprob"])
+                mean_abs_delta_logprob = mean_abs(metric_lists["delta_logprob"])
+                mean_logprob_base = mean(metric_lists["logprob_base"])
+                mean_logprob_patch = mean(metric_lists["logprob_patch"])
+
+                cie_row = {
+                    "q_id": q_id,
+                    "layer": layer,
+                    "head": head,
+                    "n_trials": len(q_trials),
+                    "mean_delta_p": mean_delta_p,
+                    "std_delta_p": std_delta_p,
+                    "mean_abs_delta_p": mean_abs_delta_p,
+                    "mean_p_base": mean_p_base,
+                    "std_p_base": std_p_base,
+                    "mean_p_patch": mean_p_patch,
+                    "std_p_patch": std_p_patch,
+                    "mean_p_base_target": mean_p_base,
+                    "mean_p_patch_target": mean_p_patch,
+                    "mean_delta_p_target": mean_delta_p,
+                    "mean_delta_logit": mean_delta_logit,
+                    "std_delta_logit": std_delta_logit,
+                    "mean_abs_delta_logit": mean_abs_delta_logit,
+                    "mean_logit_base": mean_logit_base,
+                    "mean_logit_patch": mean_logit_patch,
+                    "mean_delta_logprob": mean_delta_logprob,
+                    "std_delta_logprob": std_delta_logprob,
+                    "mean_abs_delta_logprob": mean_abs_delta_logprob,
+                    "mean_logprob_base": mean_logprob_base,
+                    "mean_logprob_patch": mean_logprob_patch,
+                    "any_nonzero": nonzero,
+                    "mean_act_norm": mean_act_norm,
+                    "clean_mean_norm": mean_act_norm,
+                }
+                cie_rows.append(cie_row)
+
+                key = (layer, head)
+                for k, v in cie_row.items():
+                    if k in ("q_id", "layer", "head", "n_trials"):
+                        continue
+                    if not isinstance(v, (int, float)):
+                        continue
+                    aie_accumulator.setdefault(key, {}).setdefault(k, 0.0)
+                    aie_accumulator[key][k] += float(v)
+                aie_counts[key] = aie_counts.get(key, 0) + 1
+
+                if pbar is not None:
+                    pbar.update(1)
+
+            if pbar is not None:
+                pbar.close()
+
+        trial_metrics_file.close()
+        log(f"saved trial metrics: {trial_metrics_path}")
+
+        cie_path = os.path.join(artifacts_dir, "cie_scores.csv")
+        save_csv(cie_path, cie_rows)
+        log(f"saved CIE scores: {cie_path}")
+
+        aie_rows = []
+        for (layer, head), sums in sorted(aie_accumulator.items()):
+            count = aie_counts.get((layer, head), 1)
+            row = {"layer": layer, "head": head, "n_qid": count}
+            for k, v in sums.items():
+                row[k] = v / count
+            aie_rows.append(row)
+
+        if aie_rows and args.score_key in aie_rows[0]:
+            aie_rows = sorted(aie_rows, key=lambda row: row[args.score_key], reverse=True)
+        scores_path = os.path.join(artifacts_dir, "aie_scores.csv")
+        save_csv(scores_path, aie_rows)
+        log(f"saved AIE scores: {scores_path}")
+        log_file.close()
+        return 0
 
     log("computing mean_activations")
     try:
