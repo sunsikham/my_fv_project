@@ -117,6 +117,10 @@ def paper_labels_and_maps(
         separators=separators,
     )
     idx_map, idx_avg = paper_compute_duplicated_labels(token_labels, dummy_labels)
+    if len(idx_map) != len(dummy_labels):
+        raise AssertionError(
+            f"dummy_labels length mismatch: dummy={len(dummy_labels)} real={len(idx_map)}"
+        )
     return prompt_string, dummy_labels, idx_map, idx_avg
 
 

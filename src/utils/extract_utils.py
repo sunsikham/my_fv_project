@@ -36,6 +36,17 @@ def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer,
 
     inputs = tokenizer(sentence, return_tensors='pt').to(model.device)
     idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
+    if len(idx_map) != len(dummy_labels):
+        raise AssertionError(
+            f"dummy_labels length mismatch: dummy={len(dummy_labels)} real={len(idx_map)}"
+        )
+    missing_slots = [
+        i for i in range(len(dummy_labels)) if i not in set(idx_map.values())
+    ]
+    if missing_slots:
+        raise AssertionError(
+            f"empty idx_map slots detected: count={len(missing_slots)} first={missing_slots[0]}"
+        )
 
     # Access Activations 
     with TraceDict(model, layers=layers, retain_input=True, retain_output=False) as td:                
@@ -77,8 +88,8 @@ def get_mean_head_activations(dataset, model, model_config, tokenizer, n_icl_exa
     if filter_set is None:
         filter_set = np.arange(len(dataset['valid']))
 
-    # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos =  False if model_config['prepend_bos'] else True
+    # BOS is handled by the tokenizer; do not inject BOS string into the prompt.
+    prepend_bos = False
 
     for n in range(N_TRIALS):
         word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_icl_examples, replace=False)]
@@ -257,7 +268,8 @@ def get_mean_layer_activations(dataset, model, model_config, tokenizer, n_icl_ex
         filter_set = np.arange(len(dataset['valid']))
 
     # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos =  False if model_config['prepend_bos'] else True
+    # BOS is handled by the tokenizer; do not inject BOS string into the prompt.
+    prepend_bos = False
 
     for n in range(N_TRIALS):
         word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_icl_examples, replace=False)]

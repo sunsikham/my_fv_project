@@ -490,6 +490,26 @@ def compute_trial_idx_map(
     )
     if prompt_string != prefix_str:
         raise ValueError("Prompt builder mismatch with paper prompt_string")
+    prefix_ids = tokenizer(prefix_str, add_special_tokens=tok_add_special)["input_ids"]
+    if len(prefix_ids) != len(token_labels):
+        raise AssertionError(
+            f"prefix length mismatch: prefix_ids={len(prefix_ids)} token_labels={len(token_labels)}"
+        )
+    seq_token_idx = len(prefix_ids) - 1
+    if not (0 <= seq_token_idx < len(token_labels)):
+        raise AssertionError(
+            f"seq_token_idx out of range: seq_token_idx={seq_token_idx} len={len(token_labels)}"
+        )
+    slot_label = token_labels[seq_token_idx][2]
+    slot_token = token_labels[seq_token_idx][1]
+    if slot_label != "query_predictive_token":
+        raise AssertionError(
+            f"slot label mismatch at seq_token_idx={seq_token_idx}: {slot_label}"
+        )
+    if slot_token != ":":
+        raise AssertionError(
+            f"slot token mismatch at seq_token_idx={seq_token_idx}: {repr(slot_token)}"
+        )
 
     dummy_labels_raw = paper_get_dummy_token_labels(
         n_icl_examples,
@@ -505,6 +525,10 @@ def compute_trial_idx_map(
         raise ValueError("slot_index_map mismatch across trials")
 
     idx_map_paper, idx_avg = paper_compute_duplicated_labels(token_labels, dummy_labels_raw)
+    if len(idx_map_paper) != len(dummy_labels_raw):
+        raise AssertionError(
+            f"dummy_labels length mismatch: dummy={len(dummy_labels_raw)} real={len(idx_map_paper)}"
+        )
 
     idx_map = {}
     for token_idx, slot_idx in idx_map_paper.items():
@@ -516,6 +540,11 @@ def compute_trial_idx_map(
         idx_map[slot_idx] = list(range(i, j + 1))
     for slot_idx in range(len(dummy_labels)):
         idx_map.setdefault(slot_idx, [])
+    empty_slots = [i for i in range(len(dummy_labels)) if not idx_map.get(i)]
+    if empty_slots:
+        raise AssertionError(
+            f"empty idx_map slots detected: count={len(empty_slots)} first={empty_slots[0]}"
+        )
 
     special_index_labels = {}
     if (
@@ -525,33 +554,6 @@ def compute_trial_idx_map(
         raise ValueError("Special token alignment mismatch across trials")
 
     slot_q = slot_index_map.get("QUERY_PRED")
-    if slot_q is not None and not idx_map.get(slot_q):
-        fallback_idx = None
-        try:
-            encoded = tokenizer(
-                full_str,
-                return_offsets_mapping=True,
-                add_special_tokens=tok_add_special,
-            )
-            offsets = encoded.get("offset_mapping") or []
-            prefix_end = len(prefix_str)
-            for idx, (start, end) in enumerate(offsets):
-                if start == end:
-                    continue
-                if end <= prefix_end:
-                    fallback_idx = idx
-                else:
-                    break
-        except Exception:
-            fallback_idx = None
-        if fallback_idx is None:
-            prefix_ids = tokenizer(
-                prefix_str, return_tensors=None, add_special_tokens=tok_add_special
-            )["input_ids"]
-            if not prefix_ids:
-                raise ValueError("Empty prefix tokenization for QUERY_PRED fallback")
-            fallback_idx = len(prefix_ids) - 1
-        idx_map[slot_q] = [fallback_idx]
 
     full_ids = tokenizer(
         full_str, return_tensors=None, add_special_tokens=tok_add_special

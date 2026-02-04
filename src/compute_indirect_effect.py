@@ -37,6 +37,17 @@ def activation_replacement_per_class_intervention(prompt_data, avg_activations, 
     token_labels, prompt_string = get_token_meta_labels(prompt_data, tokenizer, query=query, prepend_bos=model_config['prepend_bos'])
 
     idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
+    if len(idx_map) != len(dummy_labels):
+        raise AssertionError(
+            f"dummy_labels length mismatch: dummy={len(dummy_labels)} real={len(idx_map)}"
+        )
+    missing_slots = [
+        i for i in range(len(dummy_labels)) if i not in set(idx_map.values())
+    ]
+    if missing_slots:
+        raise AssertionError(
+            f"empty idx_map slots detected: count={len(missing_slots)} first={missing_slots[0]}"
+        )
     idx_map = update_idx_map(idx_map, idx_avg)
       
     sentences = [prompt_string]# * model.config.n_head # batch things by head
@@ -135,8 +146,8 @@ def compute_indirect_effect(dataset, mean_activations, model, model_config, toke
     else:
         dummy_gt_labels = get_dummy_token_labels(n_shots, tokenizer=tokenizer, model_config=model_config)
 
-    # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos = False if model_config['prepend_bos'] else True
+    # BOS is handled by the tokenizer; do not inject BOS string into the prompt.
+    prepend_bos = False
 
     if last_token_only:
         indirect_effect = torch.zeros(n_trials,model_config['n_layers'], model_config['n_heads'])

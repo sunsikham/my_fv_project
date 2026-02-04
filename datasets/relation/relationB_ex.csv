@@ -121,7 +121,7 @@ Q12,Chicken,Coop
 Q12,Bird,Cage
 Q12,Goldfish,Bow
 Q13,tadpole,frog
-Q13,caterpillar,butterfly
+Q13,Foal,Horse
 Q13,Kitten,Cat
 Q13,Fawn,Deer
 Q13,Cub,Bear
@@ -141,7 +141,7 @@ Q14,Velcro,Shoe
 Q14,remote,gate
 Q14,button,elevator
 Q16,gloves,hand
-Q16,shoes,feet
+Q16,hat,head
 Q16,Glasses,Eyes
 Q16,Mask,Face
 Q16,Scarf,Neck
@@ -151,7 +151,7 @@ Q16,boots,feet
 Q16,Vest,Chest
 Q16,Earmuffs,Ears
 Q17,hammer,nail
-Q17,thread,needle
+Q17,spoon,soup
 Q17,pen,paper
 Q17,pencil,eraser
 Q17,lock,key
@@ -162,7 +162,7 @@ Q17,remote,TV
 Q17,Bow,Arrow
 Q18,monkey,banana
 Q18,rabbit,carrot
-Q18,squirrel,acorn
+Q18,cat,fish
 Q18,mouse,cheese
 Q18,cow,grass
 Q18,horse,hay
