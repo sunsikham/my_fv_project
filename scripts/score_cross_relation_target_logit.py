@@ -115,7 +115,7 @@ def _select_query(rows: List[Dict[str, str]]) -> Dict[str, str]:
 def _target_first_token_id_with_checks(
     tokenizer,
     prefix_str: str,
-    target_str: str,
+    full_str: str,
     tok_add_special: bool,
     prefix_ids_a: List[int],
     q_id: str,
@@ -124,29 +124,18 @@ def _target_first_token_id_with_checks(
     trial_index: int,
     spec_prepend_bos: Optional[bool] = None,
 ) -> int:
-    boundary_prefix = prefix_str
-    boundary_answer = target_str
-    if boundary_prefix.endswith(" ") and not boundary_answer.startswith(" "):
-        boundary_prefix = boundary_prefix[:-1]
-        boundary_answer = f" {boundary_answer}"
-
-    prefix_ids_b = tokenizer.encode(
-        boundary_prefix, add_special_tokens=tok_add_special
-    )
+    prefix_ids_b = tokenizer.encode(prefix_str, add_special_tokens=tok_add_special)
     if prefix_ids_a != prefix_ids_b:
         tail = repr(prefix_str[-120:])
-        target_dec = repr(tokenizer.decode(tokenizer.encode(target_str)))
         raise ValueError(
             "Prefix token mismatch between model input and target-id calc: "
             f"q_id={q_id} edge={edge} shot={shot} trial={trial_index} "
-            f"prefix_tail={tail} target_str={repr(target_str)} target_dec={target_dec} "
-            f"tok_add_special={tok_add_special} spec_prepend_bos={spec_prepend_bos} "
+            f"prefix_tail={tail} tok_add_special={tok_add_special} "
+            f"spec_prepend_bos={spec_prepend_bos} "
             f"prefix_ids_a_tail={prefix_ids_a[-20:]} prefix_ids_b_tail={prefix_ids_b[-20:]}"
         )
 
-    full_ids = tokenizer.encode(
-        boundary_prefix + boundary_answer, add_special_tokens=tok_add_special
-    )
+    full_ids = tokenizer.encode(full_str, add_special_tokens=tok_add_special)
     if len(full_ids) <= len(prefix_ids_b):
         raise ValueError("Tokenization does not extend prefix for target.")
     if full_ids[: len(prefix_ids_b)] != prefix_ids_b:
@@ -154,7 +143,8 @@ def _target_first_token_id_with_checks(
         raise ValueError(
             "Prefix-invariance failed for full_ids prefix: "
             f"q_id={q_id} edge={edge} shot={shot} trial={trial_index} "
-            f"prefix_tail={repr(prefix_str[-120:])} target_str={repr(target_str)} "
+            f"prefix_tail={repr(prefix_str[-120:])} "
+            f"target_suffix_str={repr(full_str[len(prefix_str):])} "
             f"tok_add_special={tok_add_special} spec_prepend_bos={spec_prepend_bos} "
             f"prefix_ids_tail={prefix_ids_b[-20:]} full_ids_win={window}"
         )
@@ -275,6 +265,13 @@ def main() -> int:
                         prepend_bos_token=False,
                         prepend_space=True,
                     )
+                    if not full_str.startswith(prefix_str):
+                        raise ValueError(
+                            "Full prompt does not start with prefix: "
+                            f"q_id={q_id} edge={edge} shot={shot} trial={trial_index} "
+                            f"prefix_tail={repr(prefix_str[-120:])}"
+                        )
+                    target_suffix_str = full_str[len(prefix_str) :]
                     inputs = tokenizer(
                         prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
                     )
@@ -282,12 +279,11 @@ def main() -> int:
                     with torch.no_grad():
                         outputs = model(**inputs)
                     next_logits = outputs.logits[0, -1, :]
-                    target_str = query["output"]
                     prefix_ids_a = inputs["input_ids"][0].tolist()
                     target_id = _target_first_token_id_with_checks(
                         tokenizer,
                         prefix_str,
-                        target_str,
+                        full_str,
                         tok_add_special,
                         prefix_ids_a,
                         q_id=q_id,
@@ -316,7 +312,8 @@ def main() -> int:
                         "device": args.device,
                         "query_source": q_src,
                         "query_input": query["input"],
-                        "target_str": target_str,
+                        "target_str": query["output"],
+                        "target_suffix_str": target_suffix_str,
                         "query_row_id": query["row_id"],
                         "demo_source": demo_src,
                         "demo_ids_10": json.dumps([d["row_id"] for d in (A10 if demo_src == "A" else B10)]),
