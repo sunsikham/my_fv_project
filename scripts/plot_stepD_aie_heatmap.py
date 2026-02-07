@@ -17,7 +17,13 @@ from matplotlib import colors as mcolors
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot StepD AIE heatmap from aie_scores.csv.")
-    parser.add_argument("--run_id", required=True, help="StepD run id (required)")
+    parser.add_argument("--run_id", required=False, help="StepD run id (optional)")
+    parser.add_argument(
+        "--in_dir",
+        required=False,
+        default=None,
+        help="Directory containing aie_scores.csv (default: results/attention_head)",
+    )
     parser.add_argument(
         "--metric", default="mean_delta_p", help="Metric column (default: mean_delta_p)"
     )
@@ -201,7 +207,11 @@ def _resolve_grid(df: pd.DataFrame, metric: str) -> Tuple[List[int], List[int], 
 def main() -> int:
     args = parse_args()
 
-    csv_path = os.path.join("runs", args.run_id, "artifacts", "aie_scores.csv")
+    if args.run_id:
+        base_dir = os.path.join("results", "attention_head", args.run_id, "artifacts")
+    else:
+        base_dir = args.in_dir or os.path.join("results", "attention_head")
+    csv_path = os.path.join(base_dir, "aie_scores.csv")
     if not os.path.exists(csv_path):
         print(f"Missing aie_scores.csv at: {csv_path}")
         return 1
@@ -247,7 +257,7 @@ def main() -> int:
         out_name = args.out_name.format(metric=args.metric)
     else:
         out_name = args.out_name
-    out_path = os.path.join("runs", args.run_id, "artifacts", out_name)
+    out_path = os.path.join(base_dir, out_name)
 
     if args.nonzero_only is None:
         nonzero_only = args.metric == "mean_delta_p"
@@ -352,7 +362,7 @@ def main() -> int:
         )
 
         layer_out_name = f"aie_top_heads_by_layer_{metric_label}.png"
-        layer_out_path = os.path.join("runs", args.run_id, "artifacts", layer_out_name)
+        layer_out_path = os.path.join(base_dir, layer_out_name)
 
         fig, ax = plt.subplots(figsize=(11, 4.5), dpi=args.dpi)
         bars = ax.bar(layer_counts.index.astype(int), layer_counts.values, color="#2f5aa6")
