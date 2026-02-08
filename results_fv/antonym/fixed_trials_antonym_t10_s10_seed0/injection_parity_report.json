@@ -1,0 +1,67 @@
+{
+  "dataset_name": "antonym",
+  "fixed_trials_id": "fixed_trials_antonym_t10_s10_seed0",
+  "model_name": "gpt2",
+  "device": "cpu",
+  "seed": 42,
+  "checked_trials": 5,
+  "edit_layer": 9,
+  "n_top_heads": 10,
+  "token_class_idx": -1,
+  "top_heads": [
+    [
+      7,
+      7,
+      0.0002
+    ],
+    [
+      7,
+      11,
+      0.0002
+    ],
+    [
+      10,
+      7,
+      0.0002
+    ],
+    [
+      11,
+      8,
+      0.0001
+    ],
+    [
+      8,
+      10,
+      0.0001
+    ],
+    [
+      9,
+      11,
+      0.0001
+    ],
+    [
+      8,
+      11,
+      0.0001
+    ],
+    [
+      6,
+      2,
+      0.0001
+    ],
+    [
+      8,
+      1,
+      0.0001
+    ],
+    [
+      4,
+      11,
+      0.0001
+    ]
+  ],
+  "mismatch_count": 0,
+  "max_abs_diff_clean_logits": 0.0,
+  "max_abs_diff_with_logits": 0.0,
+  "trials_csv": "/Users/soonsikham/Desktop/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0/injection_parity_trials.csv"
+}

@@ -1,9 +1,13 @@
 """fv package for prompt/slot/hook/fv utilities."""
 
 from .data_provider import DummyDataProvider
-from .fv import build_fv, parse_heads
+from .fv import build_fv, compute_function_vector, parse_heads
 from .hooks import get_c_proj_pre_hook, reshape_resid_to_heads
-from .intervene import make_residual_injection_hook
+from .intervene import (
+    add_function_vector,
+    function_vector_intervention,
+    make_residual_injection_hook,
+)
 from .io import (
     default_run_id,
     infer_step5_metadata_path,
@@ -34,8 +38,10 @@ __all__ = [
     "build_fv",
     "build_two_shot_prompt",
     "build_zero_shot_prompt",
+    "compute_function_vector",
     "compute_query_predictive_slot",
     "get_target_first_token_id_from_boundary",
+    "function_vector_intervention",
     "default_run_id",
     "extract_slot_activation",
     "get_c_proj_pre_hook",
@@ -44,6 +50,7 @@ __all__ = [
     "load_csv",
     "load_json",
     "make_residual_injection_hook",
+    "add_function_vector",
     "make_cproj_head_replacer",
     "parse_heads",
     "prepare_run_dirs",

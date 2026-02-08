@@ -1,0 +1,51 @@
+{
+  "status": "PASS",
+  "dataset_name": "antonym",
+  "fixed_trials_id": "fixed_trials_antonym_t10_s10_seed0",
+  "model_name": "gpt2",
+  "seed": 42,
+  "earliest_failed_stage": null,
+  "stages": [
+    {
+      "name": "prompt",
+      "status": "PASS",
+      "cmd": "/Users/soonsikham/Desktop/my_fv_project/.venv/bin/python scripts/verify_prompt_parity.py --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json --max_trials 5 --model_name_for_tokenizer gpt2",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": null,
+      "duration_sec": 4.622324042022228
+    },
+    {
+      "name": "slot",
+      "status": "PASS",
+      "cmd": "/Users/soonsikham/Desktop/my_fv_project/.venv/bin/python scripts/verify_slot_parity_against_src.py --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json --max_trials 5 --mode corrupted --tokenizer_name gpt2 --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": null,
+      "duration_sec": 4.127114458009601
+    },
+    {
+      "name": "fv",
+      "status": "PASS",
+      "cmd": "/Users/soonsikham/Desktop/my_fv_project/.venv/bin/python scripts/verify_fv_parity.py --dataset_name antonym --fixed_trials_id fixed_trials_antonym_t10_s10_seed0 --results_root results --model_name gpt2 --device cpu --seed 42 --n_top_heads 10 --token_class_idx -1 --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": 0.0,
+      "duration_sec": 5.846807166934013
+    },
+    {
+      "name": "injection",
+      "status": "PASS",
+      "cmd": "/Users/soonsikham/Desktop/my_fv_project/.venv/bin/python scripts/verify_injection_parity.py --dataset_name antonym --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json --fixed_trials_id fixed_trials_antonym_t10_s10_seed0 --results_root results --results_fv_root results_fv --model_name gpt2 --device cpu --seed 42 --n_top_heads 10 --token_class_idx -1 --edit_layer 9 --max_trials 5 --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": 0.0,
+      "duration_sec": 8.244904082966968
+    }
+  ],
+  "paths": {
+    "log": "/Users/soonsikham/Desktop/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0/parity_suite.log",
+    "csv": "/Users/soonsikham/Desktop/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0/parity_suite_stages.csv",
+    "report": "/Users/soonsikham/Desktop/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0/parity_suite_report.json"
+  }
+}

@@ -56,7 +56,7 @@ def main() -> int:
             prefixes=prefixes,
             separators=separators,
             prepend_bos_token=prepend_bos_token,
-            prepend_space=True,
+            prepend_space=False,
         )
         corrupted_prefix, _corrupted_full, _ = build_prompt_qa_paper(
             demos_corrupt_pairs,
@@ -64,7 +64,7 @@ def main() -> int:
             prefixes=prefixes,
             separators=separators,
             prepend_bos_token=prepend_bos_token,
-            prepend_space=True,
+            prepend_space=False,
         )
 
         fixed_clean = trial.get("clean_prompt_str")
