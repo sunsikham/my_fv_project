@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import json
 import os
 import random
 import statistics
@@ -14,14 +15,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fv.adapters import infer_head_dims, resolve_attn, resolve_blocks, resolve_out_proj
-from fv.corrupt import make_corrupted_demos
-from fv.dataset_loader import load_pairs_antonym, sample_demos_and_query
 from fv.intervene import make_residual_injection_hook
 from fv.io import prepare_run_dirs, resolve_out_dir, save_json
 from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.model_spec import get_model_spec
-from fv.prompting import build_prompt_qa
-from fv.slots import compute_query_predictive_slot
 from fv.tokenization import resolve_prompt_add_special_tokens
 
 
@@ -64,6 +61,34 @@ def std(values):
     if len(values) < 2:
         return 0.0
     return statistics.pstdev(values)
+
+
+def load_sampled_trials(path: str):
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    rows = data.get("trials", data)
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("sampled_trials_path must contain non-empty 'trials' list")
+    trials = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        corrupted_prefix = row.get("corrupted_prompt_str") or row.get("corrupted_prefix_str")
+        target_id = row.get("target_first_token_id")
+        if target_id is None:
+            target_id = row.get("target_id")
+        if not isinstance(corrupted_prefix, str) or target_id is None:
+            continue
+        trials.append(
+            {
+                "q_id": str(row.get("q_id", "__all__")),
+                "corrupted_prefix_str": corrupted_prefix,
+                "target_id": int(target_id),
+            }
+        )
+    if not trials:
+        raise ValueError("No valid trials in sampled_trials_path")
+    return trials
 
 
 def build_fv_global_resid(
@@ -113,36 +138,44 @@ def build_fv_global_resid(
     return fv_global
 
 
-def compute_slot_with_fallback(
-    prefix_str: str, full_str: str, tokenizer, log, tok_add_special: bool
-):
-    try:
-        return compute_query_predictive_slot(
-            prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
-        )
-    except ValueError as exc:
-        message = str(exc)
-        if "Target id mismatch" not in message:
-            raise
-        trimmed_prefix = prefix_str.rstrip(" ")
-        if trimmed_prefix == prefix_str:
-            raise
-        log("retrying slot computation with trimmed prefix space")
-        return compute_query_predictive_slot(
-            trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
-        )
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP E top-k FV + eval.")
-    parser.add_argument("--run_id_stepD", required=True, help="StepD run_id")
+    parser.add_argument(
+        "--run_id_stepD",
+        default=None,
+        help="Deprecated: StepD run_id (used only if stepd paths are not provided)",
+    )
+    parser.add_argument(
+        "--stepd_base_dir",
+        default=None,
+        help="StepD base directory containing artifacts/ (preferred)",
+    )
+    parser.add_argument(
+        "--stepd_artifacts_dir",
+        default=None,
+        help="StepD artifacts directory override",
+    )
+    parser.add_argument(
+        "--sampled_trials_path",
+        default=None,
+        help="Path to StepD sampled_trials.json (required for StepE eval)",
+    )
+    parser.add_argument(
+        "--fixed_trials_path",
+        default=None,
+        help="Deprecated alias for --sampled_trials_path",
+    )
     parser.add_argument("--k", type=int, default=20, help="Top-k heads (default: 20)")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
     parser.add_argument(
         "--metric",
-        default="mean_cie",
-        choices=["mean_cie", "mean_abs_cie"],
-        help="AIE ranking score column (default: mean_cie)",
+        default=None,
+        help="Deprecated alias for --score_key",
+    )
+    parser.add_argument(
+        "--score_key",
+        default="mean_delta_logprob",
+        help="Ranking score column in StepD scores CSV (default: mean_delta_logprob)",
     )
     parser.add_argument(
         "--device",
@@ -202,12 +235,22 @@ def main() -> int:
         help="Output directory (default: runs/<run_id>/artifacts/)",
     )
     args = parser.parse_args()
+    if args.metric:
+        args.score_key = args.metric
+    if not args.sampled_trials_path and args.fixed_trials_path:
+        args.sampled_trials_path = args.fixed_trials_path
 
     if args.k < 1:
         print("k must be >= 1")
         return 1
     if args.n_eval_trials < 1:
         print("n_eval_trials must be >= 1")
+        return 1
+    if not args.stepd_base_dir and not args.stepd_artifacts_dir and not args.run_id_stepD:
+        print("Provide one of --stepd_base_dir, --stepd_artifacts_dir, --run_id_stepD")
+        return 1
+    if not args.sampled_trials_path:
+        print("Provide --sampled_trials_path (or --fixed_trials_path alias)")
         return 1
 
     run_info = prepare_run_dirs(args.run_id)
@@ -225,8 +268,11 @@ def main() -> int:
     log(f"artifacts_dir: {artifacts_dir}")
     log(f"log_path: {log_path}")
     log(f"run_id_stepD: {args.run_id_stepD}")
+    log(f"stepd_base_dir: {args.stepd_base_dir}")
+    log(f"stepd_artifacts_dir: {args.stepd_artifacts_dir}")
+    log(f"sampled_trials_path: {args.sampled_trials_path}")
     log(f"model: {args.model}")
-    log(f"metric: {args.metric}")
+    log(f"score_key: {args.score_key}")
     log(f"dataset_path: {args.dataset_path}")
     log(f"model_spec: {args.model_spec}")
     log(f"k: {args.k}")
@@ -250,9 +296,9 @@ def main() -> int:
         args.dtype = "fp16" if args.device == "cuda" else "fp32"
 
     try:
-        pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
+        sampled_trials = load_sampled_trials(resolve_out_dir(args.sampled_trials_path))
     except Exception as exc:
-        log(f"Failed to load dataset: {exc}")
+        log(f"Failed to load sampled trials: {exc}")
         log_file.close()
         return 1
 
@@ -264,17 +310,34 @@ def main() -> int:
         return 1
     tok_add_special = resolve_prompt_add_special_tokens(args.model, args.model_spec)
 
-    stepd_dir = resolve_out_dir(os.path.join("runs", args.run_id_stepD, "artifacts"))
-    scores_path = os.path.join(stepd_dir, "aie_scores.csv")
-    clean_mean_path = os.path.join(stepd_dir, "clean_mean.pt")
-    if not os.path.exists(scores_path):
-        log(f"Missing aie_scores.csv: {scores_path}")
+    if args.stepd_artifacts_dir:
+        stepd_dir = resolve_out_dir(args.stepd_artifacts_dir)
+    elif args.stepd_base_dir:
+        stepd_dir = os.path.join(resolve_out_dir(args.stepd_base_dir), "artifacts")
+    else:
+        stepd_dir = resolve_out_dir(os.path.join("runs", args.run_id_stepD, "artifacts"))
+    scores_candidates = [
+        os.path.join(stepd_dir, "stepD_aie_scores.csv"),
+        os.path.join(stepd_dir, "aie_scores.csv"),
+    ]
+    mean_candidates = [
+        os.path.join(stepd_dir, "stepD_mean_acts", "global_clean_mean.pt"),
+        os.path.join(stepd_dir, "mean_activations.pt"),
+        os.path.join(stepd_dir, "clean_mean.pt"),
+    ]
+    scores_path = next((path for path in scores_candidates if os.path.exists(path)), None)
+    clean_mean_path = next((path for path in mean_candidates if os.path.exists(path)), None)
+    if not scores_path:
+        log(f"Missing StepD scores CSV in {stepd_dir}")
         log_file.close()
         return 1
-    if not os.path.exists(clean_mean_path):
-        log(f"Missing clean_mean.pt: {clean_mean_path}")
+    if not clean_mean_path:
+        log(f"Missing StepD mean activations file in {stepd_dir}")
         log_file.close()
         return 1
+    log(f"stepd_artifacts_resolved: {stepd_dir}")
+    log(f"scores_path: {scores_path}")
+    log(f"clean_mean_path: {clean_mean_path}")
 
     scores = []
     with open(scores_path, newline="") as f:
@@ -283,10 +346,10 @@ def main() -> int:
             log("aie_scores.csv missing header row")
             log_file.close()
             return 1
-        if args.metric not in reader.fieldnames:
+        if args.score_key not in reader.fieldnames:
             log(
-                "Requested metric not found in aie_scores.csv: "
-                f"metric='{args.metric}' available={reader.fieldnames}"
+                "Requested score_key not found in scores CSV: "
+                f"score_key='{args.score_key}' available={reader.fieldnames}"
             )
             log_file.close()
             return 1
@@ -311,7 +374,9 @@ def main() -> int:
         for row in scores
         if int(row["layer"]) in layer_filter
     ]
-    filtered.sort(key=lambda r: float(r[args.metric]), reverse=True)
+    filtered.sort(
+        key=lambda r: (-float(r[args.score_key]), int(r["layer"]), int(r["head"]))
+    )
     top_rows = filtered[: args.k]
     if not top_rows:
         log("No heads found for top-k selection")
@@ -320,15 +385,16 @@ def main() -> int:
 
     top_heads = []
     for row in top_rows:
+        score_value = float(row[args.score_key])
         top_heads.append(
             {
                 "layer": int(row["layer"]),
                 "head": int(row["head"]),
-                "mean_cie": float(row["mean_cie"]),
-                "mean_abs_cie": float(row["mean_abs_cie"]),
-                "std_cie": float(row["std_cie"]),
-                "n_trials": int(row["n_trials"]),
-                "rank_score": float(row[args.metric]),
+                "score_key": args.score_key,
+                "rank_score": score_value,
+                "mean_delta_logprob": float(row.get("mean_delta_logprob", score_value)),
+                "mean_delta_p": float(row.get("mean_delta_p", 0.0)),
+                "n_trials": int(row.get("n_trials", 0)),
             }
         )
 
@@ -338,10 +404,11 @@ def main() -> int:
         {
             "meta": {
                 "source_run_id": args.run_id_stepD,
+                "stepd_artifacts_dir": stepd_dir,
                 "k": args.k,
                 "model": args.model,
                 "model_spec": args.model_spec,
-                "rank_metric": args.metric,
+                "score_key": args.score_key,
             },
             "heads": top_heads,
         },
@@ -349,10 +416,20 @@ def main() -> int:
     log(f"saved top heads: {top_heads_path}")
 
     clean_mean_blob = torch.load(clean_mean_path, map_location="cpu")
-    clean_mean = clean_mean_blob["clean_mean"]
-    n_heads_blob = int(clean_mean_blob["n_heads"])
-    head_dim_blob = int(clean_mean_blob["head_dim"])
-    resid_dim_blob = int(clean_mean_blob["resid_dim"])
+    if isinstance(clean_mean_blob, dict) and "clean_mean" in clean_mean_blob:
+        clean_mean = clean_mean_blob["clean_mean"]
+        n_heads_blob = int(clean_mean_blob["n_heads"])
+        head_dim_blob = int(clean_mean_blob["head_dim"])
+        resid_dim_blob = int(clean_mean_blob["resid_dim"])
+    else:
+        clean_mean = clean_mean_blob
+        if not hasattr(clean_mean, "shape") or len(clean_mean.shape) != 3:
+            log("Unsupported mean activations shape; expected [layers, heads, head_dim]")
+            log_file.close()
+            return 1
+        n_heads_blob = int(clean_mean.shape[1])
+        head_dim_blob = int(clean_mean.shape[2])
+        resid_dim_blob = n_heads_blob * head_dim_blob
 
     try:
         loader_device = None if args.device_map else args.device
@@ -508,60 +585,28 @@ def main() -> int:
         log_file.close()
         return 0
 
-    if len(pairs) < 4:
-        log("Not enough dataset pairs for requested demos + query.")
+    if not sampled_trials:
+        log("sampled_trials is empty")
         log_file.close()
         return 1
 
     trials = []
     for trial_idx in range(args.n_eval_trials):
-        demos, query = sample_demos_and_query(pairs, 3, seed=args.seed + trial_idx)
-        clean_prefix_str, clean_full_str = build_prompt_qa(demos, query)
-        corrupted_demos = make_corrupted_demos(
-            demos, random.Random(args.seed + trial_idx), ensure_derangement=True
-        )
-        corrupted_prefix_str, corrupted_full_str = build_prompt_qa(
-            corrupted_demos, query
-        )
-
-        if trial_idx == 0:
-            log(f"n_pairs_loaded: {len(pairs)}")
-            log("n_icl_examples: 3")
-            log(f"example query: input='{query[0]}' output='{query[1]}'")
-            log(f"prefix_endswith_A_space: {clean_prefix_str.endswith('A: ')}")
-
-        try:
-            clean_slot = compute_slot_with_fallback(
-                clean_prefix_str,
-                clean_full_str,
-                tokenizer,
-                log,
-                tok_add_special,
-            )
-            corrupted_slot = compute_slot_with_fallback(
-                corrupted_prefix_str,
-                corrupted_full_str,
-                tokenizer,
-                log,
-                tok_add_special,
-            )
-        except ValueError as exc:
-            log(str(exc))
-            log_file.close()
-            return 1
-
-        if clean_slot["target_id"] != corrupted_slot["target_id"]:
-            log("target_id mismatch between clean and corrupted")
-            log_file.close()
-            return 1
-
+        sample_rng = random.Random(args.seed + trial_idx)
+        sampled = sample_rng.choice(sampled_trials)
         trials.append(
             {
                 "trial_idx": trial_idx,
-                "corrupted_prefix_str": corrupted_prefix_str,
-                "target_id": clean_slot["target_id"],
+                "q_id": sampled["q_id"],
+                "corrupted_prefix_str": sampled["corrupted_prefix_str"],
+                "target_id": sampled["target_id"],
             }
         )
+    example_trial = trials[0]
+    log(
+        "eval trials sourced from sampled_trials: "
+        f"n_source={len(sampled_trials)} n_eval={len(trials)} example_qid={example_trial['q_id']}"
+    )
 
     per_layer = {layer: [] for layer in fv_by_layer}
     all_deltas = []
@@ -630,6 +675,7 @@ def main() -> int:
                 "model": args.model,
                 "model_spec": args.model_spec,
                 "run_id_stepD": args.run_id_stepD,
+                "sampled_trials_path": resolve_out_dir(args.sampled_trials_path),
                 "k": args.k,
                 "layers": sorted(layer_filter),
                 "alpha": args.alpha,

@@ -732,6 +732,11 @@ def main() -> int:
         help="Run identifier (default: auto timestamp)",
     )
     parser.add_argument(
+        "--out_base_dir",
+        default=None,
+        help="Canonical base dir; writes artifacts/ and logs/ under this directory",
+    )
+    parser.add_argument(
         "--out_dir",
         default=None,
         help="Output directory (default: runs/<run_id>/artifacts/)",
@@ -820,7 +825,18 @@ def main() -> int:
         return 1
 
     run_info = prepare_run_dirs(args.run_id, base_dir="results/attention_head")
-    if args.fixed_trials_path and args.fixed_out_dir:
+    if args.out_base_dir:
+        base_dir = resolve_out_dir(args.out_base_dir)
+        artifacts_dir = os.path.join(base_dir, "artifacts")
+        logs_dir = os.path.join(base_dir, "logs")
+        os.makedirs(artifacts_dir, exist_ok=True)
+        os.makedirs(logs_dir, exist_ok=True)
+        run_info = {
+            "run_id": os.path.basename(base_dir),
+            "artifacts_dir": artifacts_dir,
+            "logs_dir": logs_dir,
+        }
+    elif args.fixed_trials_path and args.fixed_out_dir:
         base_dir = resolve_out_dir(args.fixed_out_dir)
         artifacts_dir = os.path.join(base_dir, "artifacts")
         logs_dir = os.path.join(base_dir, "logs")
@@ -866,6 +882,7 @@ def main() -> int:
     log(f"relation_n_demos: {args.relation_n_demos}")
     log(f"relation_save_trials_json: {args.relation_save_trials_json}")
     log(f"relation_out_path: {args.relation_out_path}")
+    log(f"out_base_dir: {args.out_base_dir}")
     log(f"mean_only: {args.mean_only}")
     log(f"debug_prompt_check: {args.debug_prompt_check}")
     log(f"debug_n: {args.debug_n}")
@@ -1352,6 +1369,9 @@ def main() -> int:
                     "clean_prefix_str": fixed_clean,
                     "corrupted_prefix_str": fixed_corrupted,
                     "corrupted_full_str": corrupted_full_str,
+                    "demos_clean": trial.get("demos_clean"),
+                    "demos_corrupted": trial.get("demos_corrupted"),
+                    "query": trial.get("query"),
                     "prompt_data_clean": trial.get("prompt_data_clean"),
                     "prompt_data_corrupted": trial.get("prompt_data_corrupted"),
                     "target_id": target_id,
@@ -1632,10 +1652,16 @@ def main() -> int:
             p_targets.append(p_target)
             trials.append(
                 {
+                    "q_id": "__all__",
                     "trial_idx": kept - 1,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
                     "corrupted_full_str": corrupted_full_str,
+                    "demos_clean": [{"input": x, "output": y} for x, y in demos_norm],
+                    "demos_corrupted": [
+                        {"input": x, "output": y} for x, y in corrupted_demos_norm
+                    ],
+                    "query": {"input": query_norm[0], "output": query_norm[1]},
                     "target_id": target_id,
                     "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
@@ -1645,6 +1671,7 @@ def main() -> int:
                     "idx_map": idx_map,
                     "seq_token_idx": seq_token_idx,
                     "full_input_ids": full_input_ids,
+                    "target_str": query_norm[1],
                 }
             )
     else:
@@ -1818,10 +1845,16 @@ def main() -> int:
 
             trials.append(
                 {
+                    "q_id": "__all__",
                     "trial_idx": trial_idx,
                     "clean_prefix_str": clean_prefix_str,
                     "corrupted_prefix_str": corrupted_prefix_str,
                     "corrupted_full_str": corrupted_full_str,
+                    "demos_clean": [{"input": x, "output": y} for x, y in demos_norm],
+                    "demos_corrupted": [
+                        {"input": x, "output": y} for x, y in corrupted_demos_norm
+                    ],
+                    "query": {"input": query_norm[0], "output": query_norm[1]},
                     "target_id": target_id,
                     "target_token": tokenizer.convert_ids_to_tokens(target_id),
                     "demo_perm": demo_perm,
@@ -1831,6 +1864,7 @@ def main() -> int:
                     "idx_map": idx_map,
                     "seq_token_idx": seq_token_idx,
                     "full_input_ids": full_input_ids,
+                    "target_str": query_norm[1],
                 }
             )
 
@@ -1846,6 +1880,43 @@ def main() -> int:
         log(f"p_target_mean={p_target_mean:.6f}")
     else:
         log("p_target_mean=n/a")
+
+    sampled_trials_rows = []
+    for trial in trials:
+        sampled_trials_rows.append(
+            {
+                "q_id": trial.get("q_id", "__all__"),
+                "trial_idx": int(trial.get("trial_idx", 0)),
+                "clean_prompt_str": trial.get("clean_prefix_str"),
+                "corrupted_prompt_str": trial.get("corrupted_prefix_str"),
+                "corrupted_full_str": trial.get("corrupted_full_str"),
+                "target_str": trial.get("target_str"),
+                "target_first_token_id": int(trial["target_id"]),
+                "target_token": trial.get("target_token"),
+                "demos_clean": trial.get("demos_clean"),
+                "demos_corrupted": trial.get("demos_corrupted"),
+                "query": trial.get("query"),
+            }
+        )
+    sampled_trials_payload = {
+        "meta": {
+            "source": (
+                "relation_csv"
+                if args.relation_csv_path
+                else ("fixed_trials_override" if args.fixed_trials_path else "dataset_sampled")
+            ),
+            "relation_csv_path": args.relation_csv_path,
+            "fixed_trials_path": args.fixed_trials_path,
+            "seed": args.seed,
+            "n_trials": len(sampled_trials_rows),
+            "n_shots": args.n_icl_examples,
+            "n_demos": args.n_icl_examples,
+        },
+        "trials": sampled_trials_rows,
+    }
+    sampled_trials_path = os.path.join(artifacts_dir, "sampled_trials.json")
+    save_json(sampled_trials_path, sampled_trials_payload)
+    log(f"saved sampled trials snapshot: {sampled_trials_path}")
 
     layer_modules = {}
     for layer in layers:
@@ -1876,6 +1947,8 @@ def main() -> int:
         cie_rows = []
         aie_accumulator = {}
         aie_counts = {}
+        mean_acts_by_qid = {}
+        slot_q_ref = None
 
         log("starting AIE sweep (qid-specific mean activations)")
         try:
@@ -1904,6 +1977,7 @@ def main() -> int:
                         logger=log,
                     )
                 )
+                mean_acts_by_qid[q_id] = mean_acts.detach().cpu()
             except ValueError as exc:
                 log(str(exc))
                 log_file.close()
@@ -1913,6 +1987,13 @@ def main() -> int:
             slot_q = slot_index_map.get("QUERY_PRED")
             if slot_q is None:
                 log("QUERY_PRED missing from slot_index_map")
+                log_file.close()
+                trial_metrics_file.close()
+                return 1
+            if slot_q_ref is None:
+                slot_q_ref = int(slot_q)
+            elif int(slot_q) != slot_q_ref:
+                log("QUERY_PRED slot index mismatch across qids")
                 log_file.close()
                 trial_metrics_file.close()
                 return 1
@@ -2133,6 +2214,48 @@ def main() -> int:
         scores_path = os.path.join(artifacts_dir, "aie_scores.csv")
         save_csv(scores_path, aie_rows)
         log(f"saved AIE scores: {scores_path}")
+        mean_acts_dir = os.path.join(artifacts_dir, "stepD_mean_acts")
+        os.makedirs(mean_acts_dir, exist_ok=True)
+        qid_paths = []
+        for q_id, q_mean in sorted(mean_acts_by_qid.items()):
+            if hasattr(q_mean, "dim") and q_mean.dim() == 4:
+                q_mean_export = q_mean[:, :, slot_q_ref, :]
+            else:
+                q_mean_export = q_mean
+            q_path = os.path.join(mean_acts_dir, f"qid_{q_id}_clean_mean.pt")
+            torch.save(
+                {
+                    "clean_mean": q_mean_export,
+                    "slot_q": slot_q_ref,
+                    "n_heads": int(model_cfg["n_heads"]),
+                    "head_dim": int(model_cfg["head_dim"]),
+                    "resid_dim": int(model_cfg["resid_dim"]),
+                },
+                q_path,
+            )
+            qid_paths.append(q_path)
+        if qid_paths:
+            log(f"saved qid mean acts: n={len(qid_paths)} dir={mean_acts_dir}")
+            stacked = torch.stack([mean_acts_by_qid[q] for q in sorted(mean_acts_by_qid.keys())], dim=0)
+            global_mean = stacked.mean(dim=0)
+            if hasattr(global_mean, "dim") and global_mean.dim() == 4:
+                global_clean_mean = global_mean[:, :, slot_q_ref, :]
+            else:
+                global_clean_mean = global_mean
+            global_path = os.path.join(mean_acts_dir, "global_clean_mean.pt")
+            torch.save(
+                {
+                    "clean_mean": global_clean_mean,
+                    "slot_q": slot_q_ref,
+                    "n_heads": int(model_cfg["n_heads"]),
+                    "head_dim": int(model_cfg["head_dim"]),
+                    "resid_dim": int(model_cfg["resid_dim"]),
+                },
+                global_path,
+            )
+            # Backward compatibility for StepE legacy path probes.
+            torch.save(global_clean_mean, os.path.join(artifacts_dir, "mean_activations.pt"))
+            log(f"saved global mean acts: {global_path}")
         log_file.close()
         return 0
 

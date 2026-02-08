@@ -2,19 +2,19 @@
 """STEP 6: Evaluate FV injection on 0-shot antonym prompts."""
 
 import argparse
+import json
 import os
 import random
 import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fv.dataset_loader import load_pairs_antonym
 from fv.hf_loader import load_hf_model_and_tokenizer
 from fv.model_spec import get_model_spec
 from fv.intervene import make_residual_injection_hook
@@ -163,6 +163,60 @@ def std(values):
     return statistics.pstdev(values)
 
 
+def parse_qid_list(value: Optional[str]) -> Optional[List[str]]:
+    if value is None:
+        return None
+    qids = [part.strip() for part in value.split(",") if part.strip()]
+    if not qids:
+        raise ValueError("eval_qids must include at least one qid")
+    return qids
+
+
+def load_eval_examples_from_trials_json(path: str) -> List[Dict[str, object]]:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    trials = data.get("trials", data)
+    if not isinstance(trials, list) or not trials:
+        raise ValueError("sampled_trials_path/fixed_trials_path must contain non-empty 'trials' list")
+    examples: List[Dict[str, object]] = []
+    for row in trials:
+        if not isinstance(row, dict):
+            continue
+        q_id = str(row.get("q_id", "unknown"))
+        prefix_str = row.get("corrupted_prompt_str") or row.get("corrupted_prefix_str")
+        target_str = row.get("target_str")
+        target_id = row.get("target_first_token_id")
+        if target_id is None:
+            target_id = row.get("target_id")
+        if prefix_str is None:
+            query = row.get("query", {})
+            if not isinstance(query, dict):
+                continue
+            x_val = query.get("input")
+            y_val = query.get("output") or target_str
+            if not isinstance(x_val, str) or not isinstance(y_val, str):
+                continue
+            prefix_str = f"Q: {x_val}\nA: "
+            target_str = y_val
+        if not isinstance(prefix_str, str):
+            continue
+        full_str = row.get("corrupted_full_str")
+        if not isinstance(full_str, str) and isinstance(target_str, str):
+            full_str = prefix_str + target_str
+        examples.append(
+            {
+                "q_id": q_id,
+                "prefix_str": prefix_str,
+                "full_str": full_str,
+                "answer": target_str,
+                "target_id": int(target_id) if target_id is not None else None,
+            }
+        )
+    if not examples:
+        raise ValueError("No valid eval examples were found in trial snapshot")
+    return examples
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="STEP 6 FV injection eval.")
     parser.add_argument("--model", default="gpt2", help="Model name or path (default: gpt2)")
@@ -222,6 +276,32 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
     parser.add_argument("--n_eval", type=int, default=20, help="Number of eval prompts")
     parser.add_argument(
+        "--sampled_trials_path",
+        default=None,
+        help="Path to StepD sampled_trials.json (required; Step6 reuses exact trials)",
+    )
+    parser.add_argument(
+        "--fixed_trials_path",
+        default=None,
+        help="Deprecated alias for --sampled_trials_path",
+    )
+    parser.add_argument(
+        "--eval_scope",
+        default="auto",
+        choices=["auto", "in_domain", "all_qids", "qid_list"],
+        help="Eval scope (default: auto; fv_qid->in_domain, fv_global->all_qids)",
+    )
+    parser.add_argument(
+        "--eval_qids",
+        default=None,
+        help="Comma-separated qid list when --eval_scope=qid_list",
+    )
+    parser.add_argument(
+        "--fv_source_qid",
+        default=None,
+        help="Source qid for qid-specific FV (required for in_domain with fv_qid)",
+    )
+    parser.add_argument(
         "--answer_first_token",
         default="auto",
         help="Override target token (string or id), or 'auto'",
@@ -277,6 +357,19 @@ def main() -> int:
         args.edit_layer = args.layer
     if args.fv_path and not args.fv_global_path:
         args.fv_global_path = args.fv_path
+    try:
+        parsed_eval_qids = parse_qid_list(args.eval_qids)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    if args.eval_scope == "qid_list" and not parsed_eval_qids:
+        print("--eval_qids is required when --eval_scope=qid_list")
+        return 1
+    if not args.sampled_trials_path and args.fixed_trials_path:
+        args.sampled_trials_path = args.fixed_trials_path
+    if not args.sampled_trials_path:
+        print("Provide --sampled_trials_path (or --fixed_trials_path alias)")
+        return 1
 
     run_info = None
     if args.out_dir:
@@ -349,6 +442,7 @@ def main() -> int:
     print(f"seed: {args.seed}")
     print(f"model: {args.model}")
     print(f"dataset_path: {args.dataset_path}")
+    print(f"sampled_trials_path: {args.sampled_trials_path}")
     print(f"model_spec: {args.model_spec}")
     print(f"edit_layer: {args.edit_layer}")
     print(f"use_fv_by_layer: {args.use_fv_by_layer}")
@@ -408,18 +502,24 @@ def main() -> int:
         except ValueError as exc:
             print(str(exc))
             return 1
+    eval_examples: List[Dict[str, object]] = []
     try:
-        pairs = load_pairs_antonym(args.dataset_path, canonical_by_input=True)
+        eval_examples = load_eval_examples_from_trials_json(
+            resolve_out_dir(args.sampled_trials_path)
+        )
     except Exception as exc:
-        print(f"Failed to load dataset: {exc}")
+        print(f"Failed to load sampled trials: {exc}")
         return 1
-    if not pairs:
-        print("Dataset returned no valid pairs.")
-        return 1
-    example_x, example_y = random.Random(args.seed).choice(pairs)
-    example_prefix = f"Q: {example_x}\nA: "
-    print(f"example_pair: input='{example_x}' output='{example_y}'")
-    print(f"prefix_endswith_A_space: {example_prefix.endswith('A: ')}")
+    sample_example = random.Random(args.seed).choice(eval_examples)
+    print(
+        "example_pair: "
+        f"qid='{sample_example['q_id']}' "
+        f"answer='{sample_example['answer']}'"
+    )
+    print(
+        "prefix_endswith_A_space: "
+        f"{str(sample_example['prefix_str']).endswith('A: ')}"
+    )
     try:
         dims = infer_head_dims(model, spec_name=args.model_spec)
     except ValueError as exc:
@@ -461,6 +561,8 @@ def main() -> int:
         artifact_base = resolve_out_dir(os.path.join("runs", args.run_id_stepE, "artifacts"))
 
     fv_source = "fv_global_resid"
+    fv_kind = "global"
+    fv_source_qid = args.fv_source_qid
     token_rule = "unknown"
     fv_meta = None
     if args.use_fv_by_layer:
@@ -484,6 +586,7 @@ def main() -> int:
             return 1
         fv = fv_by_layer[args.edit_layer]
         fv_source = "fv_by_layer"
+        fv_kind = "global"
     else:
         if args.fv_global_path:
             fv_global_path = resolve_out_dir(args.fv_global_path)
@@ -515,6 +618,14 @@ def main() -> int:
             return 1
         fv_meta = meta
         token_rule = meta.get("token_position_rule", "unknown")
+        if isinstance(meta.get("fv_source_qid"), str):
+            fv_source_qid = meta["fv_source_qid"]
+        if isinstance(meta.get("fv_type"), str):
+            fv_kind = meta["fv_type"]
+        elif "fv_qid" in os.path.basename(fv_global_path):
+            fv_kind = "qid"
+        else:
+            fv_kind = "global"
 
     if fv.dim() != 1:
         print(f"FV must be 1D, got shape {tuple(fv.shape)}")
@@ -530,12 +641,52 @@ def main() -> int:
     print(f"fv norm: {fv_norm:.6f}")
 
     print(f"fv_source: {fv_source}")
+    print(f"fv_kind: {fv_kind}")
+    if fv_source_qid:
+        print(f"fv_source_qid: {fv_source_qid}")
     print(f"token_rule: {token_rule}")
     log(f"edit_layer: {args.edit_layer}")
     log(f"alpha: {args.alpha}")
     log(f"token_rule: {token_rule}")
     log(f"fv_norm: {fv_norm:.6f}")
     log(f"score_key: {args.score_key}")
+
+    available_qids = sorted({str(row["q_id"]) for row in eval_examples})
+    eval_scope = args.eval_scope
+    if eval_scope == "auto":
+        eval_scope = "in_domain" if fv_kind == "qid" else "all_qids"
+    if eval_scope == "in_domain":
+        if fv_kind == "qid":
+            if not fv_source_qid:
+                print("fv_qid mode requires --fv_source_qid or fv_meta.fv_source_qid")
+                return 1
+            eval_qids = [fv_source_qid]
+        else:
+            eval_qids = available_qids
+    elif eval_scope == "all_qids":
+        eval_qids = available_qids
+    elif eval_scope == "qid_list":
+        eval_qids = parsed_eval_qids or []
+    else:
+        print(f"Unknown eval_scope: {eval_scope}")
+        return 1
+
+    missing_qids = [qid for qid in eval_qids if qid not in available_qids]
+    if missing_qids:
+        print(
+            "Requested eval_qids are missing in loaded eval data: "
+            + ", ".join(missing_qids)
+        )
+        return 1
+    eval_examples_by_qid: Dict[str, List[Dict[str, object]]] = {}
+    for row in eval_examples:
+        q_id = str(row["q_id"])
+        if q_id in eval_qids:
+            eval_examples_by_qid.setdefault(q_id, []).append(row)
+    print(f"eval_scope: {eval_scope}")
+    print(f"eval_qids: {','.join(eval_qids)}")
+    log(f"eval_scope: {eval_scope}")
+    log(f"eval_qids: {','.join(eval_qids)}")
 
     injection_state = {
         "fv": fv,
@@ -566,6 +717,25 @@ def main() -> int:
     delta_logprob_vals = []
     delta_p_vals = []
     fallback_used_count = 0
+    per_qid_stats: Dict[str, Dict[str, object]] = {}
+
+    def ensure_qid_bucket(q_id: str) -> Dict[str, object]:
+        bucket = per_qid_stats.get(q_id)
+        if bucket is not None:
+            return bucket
+        bucket = {
+            "count": 0,
+            "sum_acc_base": 0.0,
+            "sum_acc_with": 0.0,
+            "sum_delta_logit": 0.0,
+            "sum_delta_logprob": 0.0,
+            "sum_delta_p": 0.0,
+            "delta_logit_vals": [],
+            "delta_logprob_vals": [],
+            "delta_p_vals": [],
+        }
+        per_qid_stats[q_id] = bucket
+        return bucket
 
     override_info = {}
     try:
@@ -586,6 +756,7 @@ def main() -> int:
     while idx < args.n_eval:
         batch_prompts = []
         batch_answers = []
+        batch_qids = []
         batch_targets = []
         batch_target_tokens = []
         batch_leading_spaces = []
@@ -597,22 +768,33 @@ def main() -> int:
         for offset in range(batch_size):
             sample_idx = idx + offset
             sample_rng = random.Random(args.seed + sample_idx)
-            x_val, y_val = sample_rng.choice(pairs)
-            prefix_str = f"Q: {x_val}\nA: "
-            full_str = prefix_str + y_val
-            try:
-                slot_info, fallback_used = compute_slot_with_fallback(
-                    prefix_str, full_str, tokenizer, log, tok_add_special
-                )
-            except ValueError as exc:
-                print(str(exc))
-                return 1
-            if fallback_used:
-                fallback_used_count += 1
-            target_id = slot_info["target_id"]
+            q_id = eval_qids[sample_idx % len(eval_qids)]
+            sample = sample_rng.choice(eval_examples_by_qid[q_id])
+            prefix_str = str(sample["prefix_str"])
+            full_raw = sample.get("full_str")
+            full_str = str(full_raw) if isinstance(full_raw, str) else None
+            answer_raw = sample.get("answer")
+            y_val = str(answer_raw) if isinstance(answer_raw, str) else ""
+            sample_target_id = sample.get("target_id")
+            if sample_target_id is None:
+                if not full_str:
+                    print("trial snapshot is missing both target_id and full_str")
+                    return 1
+                try:
+                    slot_info, fallback_used = compute_slot_with_fallback(
+                        prefix_str, full_str, tokenizer, log, tok_add_special
+                    )
+                except ValueError as exc:
+                    print(str(exc))
+                    return 1
+                if fallback_used:
+                    fallback_used_count += 1
+                target_id = slot_info["target_id"]
+            else:
+                target_id = int(sample_target_id)
             target_token = tokenizer.convert_ids_to_tokens(target_id)
             try:
-                leading_space = infer_leading_space(y_val, tokenizer)
+                leading_space = infer_leading_space(y_val, tokenizer) if y_val else False
             except ValueError as exc:
                 print(str(exc))
                 return 1
@@ -625,6 +807,7 @@ def main() -> int:
 
             batch_prompts.append(prefix_str)
             batch_answers.append(y_val)
+            batch_qids.append(q_id)
             batch_targets.append(target_id)
             batch_target_tokens.append(target_token)
             batch_leading_spaces.append(leading_space)
@@ -700,6 +883,7 @@ def main() -> int:
             print(
                 "sample: "
                 f"idx={idx} "
+                f"q_id={batch_qids[i]} "
                 f"prompt='{prompt_summary}' "
                 f"answer='{batch_answers[i]}' "
                 f"target_id={batch_targets[i]} "
@@ -715,6 +899,7 @@ def main() -> int:
             results.append(
                 {
                     "idx": idx,
+                    "q_id": batch_qids[i],
                     "prompt": batch_prompts[i],
                     "answer": batch_answers[i],
                     "target_id": batch_targets[i],
@@ -738,6 +923,16 @@ def main() -> int:
                     "delta_p": delta_p,
                 }
             )
+            q_bucket = ensure_qid_bucket(batch_qids[i])
+            q_bucket["count"] += 1
+            q_bucket["sum_acc_base"] += acc_base
+            q_bucket["sum_acc_with"] += acc_with
+            q_bucket["sum_delta_logit"] += delta_logit
+            q_bucket["sum_delta_logprob"] += delta_logprob
+            q_bucket["sum_delta_p"] += delta_p
+            q_bucket["delta_logit_vals"].append(delta_logit)
+            q_bucket["delta_logprob_vals"].append(delta_logprob)
+            q_bucket["delta_p_vals"].append(delta_p)
             idx += 1
 
     print(f"fallback_used_count: {fallback_used_count}")
@@ -773,6 +968,27 @@ def main() -> int:
     print(f"mean(p_with): {mean_p_with:.6f}")
     print(f"mean(delta p): {mean_delta_p:.6f}")
 
+    per_qid_summary = {}
+    for q_id in sorted(per_qid_stats.keys()):
+        bucket = per_qid_stats[q_id]
+        count = int(bucket["count"]) or 1
+        per_qid_summary[q_id] = {
+            "n_eval": int(bucket["count"]),
+            "acc_base": bucket["sum_acc_base"] / count,
+            "acc_with": bucket["sum_acc_with"] / count,
+            "delta_acc": (bucket["sum_acc_with"] - bucket["sum_acc_base"]) / count,
+            "mean_delta_logit": bucket["sum_delta_logit"] / count,
+            "mean_delta_logprob": bucket["sum_delta_logprob"] / count,
+            "mean_delta_p": bucket["sum_delta_p"] / count,
+            "std_delta_logit": std(bucket["delta_logit_vals"]),
+            "std_delta_logprob": std(bucket["delta_logprob_vals"]),
+            "std_delta_p": std(bucket["delta_p_vals"]),
+        }
+    matrix_key = fv_source_qid or "__global__"
+    matrix = {matrix_key: {}}
+    for q_id, row in per_qid_summary.items():
+        matrix[matrix_key][q_id] = row["mean_delta_logprob"]
+
     step6_metadata = {
         "model": args.model,
         "model_spec": args.model_spec,
@@ -788,6 +1004,10 @@ def main() -> int:
         "n_eval": args.n_eval,
         "alpha": args.alpha,
         "fv_source": fv_source,
+        "fv_type": fv_kind,
+        "fv_source_qid": fv_source_qid,
+        "eval_scope": eval_scope,
+        "eval_qids": eval_qids,
         "config": {
             "n_heads": n_heads,
             "head_dim": head_dim,
@@ -837,6 +1057,8 @@ def main() -> int:
             "mean_delta_p": mean_delta_p,
             "std_delta_p": std_delta_p,
         },
+        "per_qid": per_qid_summary,
+        "matrix": matrix,
         "metadata": step6_metadata,
         "results": results,
     }
@@ -854,6 +1076,12 @@ def main() -> int:
     log(f"saved results: {saved_paths['results_path']}")
     print(f"metadata saved: {saved_paths['metadata_path']}")
     log(f"metadata saved: {saved_paths['metadata_path']}")
+    print(f"eval summary saved: {saved_paths['eval_summary_path']}")
+    log(f"eval summary saved: {saved_paths['eval_summary_path']}")
+    print(f"eval trials saved: {saved_paths['eval_trials_path']}")
+    log(f"eval trials saved: {saved_paths['eval_trials_path']}")
+    print(f"eval meta saved: {saved_paths['eval_meta_path']}")
+    log(f"eval meta saved: {saved_paths['eval_meta_path']}")
     log_file.close()
 
     return 0

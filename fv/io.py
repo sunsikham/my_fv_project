@@ -66,6 +66,9 @@ def step6_paths(out_dir: str, model: str, layer: int, n_eval: int) -> Dict[str, 
         "metadata_path": os.path.join(
             out_dir, f"metadata_step6_{safe_model}_layer{layer}_n{n_eval}.json"
         ),
+        "eval_summary_path": os.path.join(out_dir, "eval_summary.json"),
+        "eval_trials_path": os.path.join(out_dir, "eval_trials.jsonl"),
+        "eval_meta_path": os.path.join(out_dir, "eval_meta.json"),
     }
 
 
@@ -129,6 +132,12 @@ def save_step6_results(
     paths = step6_paths(resolved_out_dir, model, layer, n_eval)
     save_json(paths["metadata_path"], metadata)
     save_json(paths["results_path"], payload)
+    save_json(paths["eval_meta_path"], metadata)
+    save_json(paths["eval_summary_path"], payload.get("summary", {}))
+    results = payload.get("results", [])
+    with open(paths["eval_trials_path"], "w", encoding="utf-8") as handle:
+        for row in results if isinstance(results, list) else []:
+            handle.write(json.dumps(row, ensure_ascii=True) + "\n")
     return paths
 
 
