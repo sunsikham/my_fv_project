@@ -174,8 +174,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--score_key",
-        default="mean_delta_logprob",
-        help="Ranking score column in StepD scores CSV (default: mean_delta_logprob)",
+        default="mean_delta_p",
+        help="Ranking score column in StepD scores CSV (default: mean_delta_p)",
     )
     parser.add_argument(
         "--device",

@@ -20,7 +20,6 @@ from fv.model_spec import get_model_spec
 from fv.intervene import make_residual_injection_hook
 from fv.io import load_json, prepare_run_dirs, resolve_out_dir, save_step6_results
 from fv.adapters import infer_head_dims, resolve_blocks
-from fv.slots import compute_query_predictive_slot
 from fv.tokenization import resolve_prompt_add_special_tokens
 
 
@@ -118,32 +117,6 @@ def check_llama_target_paths(model, spec, logger):
         logger(f"llama target: mlp.{proj_name} exists=True")
 
 
-def compute_slot_with_fallback(
-    prefix_str: str, full_str: str, tokenizer, log, tok_add_special: bool
-):
-    try:
-        return (
-            compute_query_predictive_slot(
-                prefix_str, full_str, tokenizer, add_special_tokens=tok_add_special
-            ),
-            False,
-        )
-    except ValueError as exc:
-        message = str(exc)
-        if "Target id mismatch" not in message:
-            raise
-        trimmed_prefix = prefix_str.rstrip(" ")
-        if trimmed_prefix == prefix_str:
-            raise
-        log("retrying slot computation with trimmed prefix space")
-        return (
-            compute_query_predictive_slot(
-                trimmed_prefix, full_str, tokenizer, add_special_tokens=tok_add_special
-            ),
-            True,
-        )
-
-
 def compute_token_scores(logits, target_ids):
     import torch
 
@@ -215,6 +188,44 @@ def load_eval_examples_from_trials_json(path: str) -> List[Dict[str, object]]:
     if not examples:
         raise ValueError("No valid eval examples were found in trial snapshot")
     return examples
+
+
+def recompute_target_id_from_boundary(
+    prefix_str: str,
+    target_str: str,
+    tokenizer,
+    tok_add_special: bool,
+) -> Dict[str, object]:
+    boundary_prefix = prefix_str
+    boundary_answer = target_str
+    if boundary_prefix.endswith(" ") and not boundary_answer.startswith(" "):
+        boundary_prefix = boundary_prefix[:-1]
+        boundary_answer = f" {boundary_answer}"
+    prefix_ids = tokenizer.encode(boundary_prefix, add_special_tokens=tok_add_special)
+    full_ids = tokenizer.encode(
+        boundary_prefix + boundary_answer, add_special_tokens=tok_add_special
+    )
+    if len(full_ids) <= len(prefix_ids):
+        raise ValueError("Tokenization does not extend prefix for target boundary.")
+    expected_target_id = int(full_ids[len(prefix_ids)])
+    return {
+        "expected_target_id": expected_target_id,
+        "boundary_prefix": boundary_prefix,
+        "boundary_answer": boundary_answer,
+        "prefix_ids": prefix_ids,
+        "full_ids": full_ids,
+    }
+
+
+def write_target_id_debug_bundle(
+    out_dir: str,
+    sample_idx: int,
+    payload: Dict[str, object],
+) -> str:
+    path = os.path.join(out_dir, f"step6_target_id_debug_{sample_idx}.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=True)
+    return path
 
 
 def main() -> int:
@@ -777,21 +788,82 @@ def main() -> int:
             y_val = str(answer_raw) if isinstance(answer_raw, str) else ""
             sample_target_id = sample.get("target_id")
             if sample_target_id is None:
-                if not full_str:
-                    print("trial snapshot is missing both target_id and full_str")
-                    return 1
-                try:
-                    slot_info, fallback_used = compute_slot_with_fallback(
-                        prefix_str, full_str, tokenizer, log, tok_add_special
-                    )
-                except ValueError as exc:
-                    print(str(exc))
-                    return 1
-                if fallback_used:
-                    fallback_used_count += 1
-                target_id = slot_info["target_id"]
-            else:
-                target_id = int(sample_target_id)
+                print("trial snapshot is missing target_id/target_first_token_id")
+                return 1
+            target_id = int(sample_target_id)
+            if not y_val:
+                print("trial snapshot is missing target_str for target_id verification")
+                return 1
+            try:
+                target_check = recompute_target_id_from_boundary(
+                    prefix_str=prefix_str,
+                    target_str=y_val,
+                    tokenizer=tokenizer,
+                    tok_add_special=tok_add_special,
+                )
+            except ValueError as exc:
+                debug_path = write_target_id_debug_bundle(
+                    out_dir=out_dir,
+                    sample_idx=sample_idx,
+                    payload={
+                        "error": "target_id_recompute_failed",
+                        "message": str(exc),
+                        "sample_idx": sample_idx,
+                        "q_id": q_id,
+                        "model": args.model,
+                        "model_spec": args.model_spec,
+                        "tok_add_special": bool(tok_add_special),
+                        "tokenizer_bos_token_id": tokenizer.bos_token_id,
+                        "tokenizer_eos_token_id": tokenizer.eos_token_id,
+                        "tokenizer_pad_token_id": tokenizer.pad_token_id,
+                        "prefix_str": prefix_str,
+                        "target_str": y_val,
+                        "target_id_snapshot": target_id,
+                    },
+                )
+                print(str(exc))
+                print(f"target_id debug bundle: {debug_path}")
+                return 1
+            expected_target_id = int(target_check["expected_target_id"])
+            if target_id != expected_target_id:
+                debug_path = write_target_id_debug_bundle(
+                    out_dir=out_dir,
+                    sample_idx=sample_idx,
+                    payload={
+                        "error": "target_id_mismatch",
+                        "sample_idx": sample_idx,
+                        "q_id": q_id,
+                        "model": args.model,
+                        "model_spec": args.model_spec,
+                        "tok_add_special": bool(tok_add_special),
+                        "tokenizer_bos_token_id": tokenizer.bos_token_id,
+                        "tokenizer_eos_token_id": tokenizer.eos_token_id,
+                        "tokenizer_pad_token_id": tokenizer.pad_token_id,
+                        "prefix_str": prefix_str,
+                        "target_str": y_val,
+                        "target_id_snapshot": target_id,
+                        "target_id_recomputed": expected_target_id,
+                        "snapshot_target_token": tokenizer.convert_ids_to_tokens(target_id),
+                        "recomputed_target_token": tokenizer.convert_ids_to_tokens(
+                            expected_target_id
+                        ),
+                        "prefix_len": len(target_check["prefix_ids"]),
+                        "full_len": len(target_check["full_ids"]),
+                        "seq_token_idx": len(target_check["prefix_ids"]) - 1,
+                        "target_pos": len(target_check["prefix_ids"]),
+                        "prefix_ids_tail": target_check["prefix_ids"][-16:],
+                        "full_ids_tail": target_check["full_ids"][-16:],
+                        "boundary_prefix": target_check["boundary_prefix"],
+                        "boundary_answer": target_check["boundary_answer"],
+                        "full_str_snapshot": full_str,
+                    },
+                )
+                print(
+                    "target_id mismatch: "
+                    f"snapshot={target_id} recomputed={expected_target_id}"
+                )
+                print(f"target_id debug bundle: {debug_path}")
+                return 1
             target_token = tokenizer.convert_ids_to_tokens(target_id)
             try:
                 leading_space = infer_leading_space(y_val, tokenizer) if y_val else False
