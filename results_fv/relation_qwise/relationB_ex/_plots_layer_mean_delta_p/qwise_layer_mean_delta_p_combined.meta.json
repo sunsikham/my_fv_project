@@ -1,0 +1,13 @@
+{
+  "qwise_root": "results_fv/relation_qwise/relationB_ex",
+  "num_qids_plotted": 5,
+  "q_ids_plotted": [
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q13",
+    "Q14"
+  ],
+  "num_points": 136,
+  "generated_at": "2026-02-10T12:13:43.725994Z"
+}
