@@ -1896,6 +1896,9 @@ def main() -> int:
                 "demos_clean": trial.get("demos_clean"),
                 "demos_corrupted": trial.get("demos_corrupted"),
                 "query": trial.get("query"),
+                "query_source_index": trial.get("query_source_index"),
+                "demo_source_indices": trial.get("demo_source_indices"),
+                "demo_order": trial.get("demo_order"),
             }
         )
     sampled_trials_payload = {

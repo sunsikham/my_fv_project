@@ -121,16 +121,18 @@ def generate_relation_trials(
     for q_id in selected_qs:
         pairs = by_q.get(q_id, [])
         q_counts[q_id] = len(pairs)
-        if len(pairs) < 2:
+        # Need at least 1 query row + n_demos rows.
+        if len(pairs) < (n_demos + 1):
             skipped_qs[q_id] = len(pairs)
             continue
         usable_qs.append(q_id)
 
     if not usable_qs:
-        raise ValueError("No q has at least 2 examples (query + demo).")
+        raise ValueError(
+            f"No eligible q: each q must have at least n_demos+1 rows (n_demos={n_demos})."
+        )
 
-    min_avail = min(len(by_q[q_id]) - 1 for q_id in usable_qs)
-    n_demos_effective = min(n_demos, min_avail)
+    n_demos_effective = n_demos
 
     use_prefixes = prefixes or DEFAULT_PREFIXES
     use_separators = separators or DEFAULT_SEPARATORS
@@ -142,14 +144,18 @@ def generate_relation_trials(
 
     for q_id in usable_qs:
         pairs = _normalize_pairs(by_q[q_id])
+        indexed_pairs = list(enumerate(pairs))
         q_demo_counts[q_id] = n_demos_effective
         shuffle_match_counts[q_id] = []
+
         for trial_idx in range(n_trials_per_q):
-            query_idx = rng.randrange(len(pairs))
-            query = pairs[query_idx]
-            demo_candidates = [p for i, p in enumerate(pairs) if i != query_idx]
+            query_idx = rng.randrange(len(indexed_pairs))
+            query = indexed_pairs[query_idx][1]
+            demo_candidates = [entry for entry in indexed_pairs if entry[0] != query_idx]
             rng.shuffle(demo_candidates)
-            demos_clean = demo_candidates[:n_demos_effective]
+            demo_entries = demo_candidates[:n_demos_effective]
+            demo_indices = [int(idx) for idx, _pair in demo_entries]
+            demos_clean = [pair for _idx, pair in demo_entries]
             demos_corrupted, overlap = _shuffle_outputs(demos_clean, rng)
             shuffle_match_counts[q_id].append(overlap)
 
@@ -191,6 +197,9 @@ def generate_relation_trials(
             target_str = prompt_data_clean["query_target"]["output"]
             trial = {
                 "q_id": q_id,
+                "query_source_index": int(query_idx),
+                "demo_source_indices": demo_indices,
+                "demo_order": [int(i) for i in range(n_demos_effective)],
                 "demos_clean": [{"input": x, "output": y} for x, y in demos_clean],
                 "demos_corrupted": [{"input": x, "output": y} for x, y in demos_corrupted],
                 "query": {"input": query[0], "output": query[1]},

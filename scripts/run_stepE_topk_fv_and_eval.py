@@ -103,6 +103,29 @@ def build_fv_global_resid(
 ):
     import torch
 
+    def _is_float_dtype(dtype) -> bool:
+        try:
+            return bool(torch.empty((), dtype=dtype).is_floating_point())
+        except Exception:
+            return False
+
+    def _choose_out_proj_input_dtype(out_proj_module, fallback_dtype, fallback_device):
+        # bitsandbytes Linear4bit stores packed weights in uint8 but expects float inputs.
+        compute_dtype = getattr(out_proj_module, "compute_dtype", None)
+        if _is_float_dtype(compute_dtype):
+            return compute_dtype
+
+        try:
+            param_dtype = next(out_proj_module.parameters()).dtype
+        except StopIteration:
+            param_dtype = None
+
+        if _is_float_dtype(param_dtype):
+            return param_dtype
+        if _is_float_dtype(fallback_dtype):
+            return fallback_dtype
+        return torch.float16 if fallback_device.type == "cuda" else torch.float32
+
     fv_global = torch.zeros((hidden_size,), dtype=torch.float32, device=device)
     blocks = resolve_blocks(model, spec, logger=log)
     out_proj_by_layer = {}
@@ -117,11 +140,19 @@ def build_fv_global_resid(
 
         try:
             param = next(out_proj.parameters())
-            out_dtype = param.dtype
             out_device = param.device
         except StopIteration:
-            out_dtype = torch.float32
             out_device = device
+            param = None
+
+        fallback_dtype = clean_mean[layer][head].dtype
+        if param is not None:
+            fallback_dtype = param.dtype
+        out_dtype = _choose_out_proj_input_dtype(
+            out_proj_module=out_proj,
+            fallback_dtype=fallback_dtype,
+            fallback_device=out_device,
+        )
 
         x_pre = torch.zeros((1, 1, hidden_size), dtype=out_dtype, device=out_device)
         head_vec = clean_mean[layer][head].to(device=out_device, dtype=out_dtype)

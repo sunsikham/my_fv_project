@@ -5,7 +5,7 @@
   "save_path_root": "results/antonym",
   "seed": 42,
   "n_shots": "10",
-  "n_trials": "5",
+  "n_trials": "10",
   "test_split": 0.3,
   "device": "cpu",
   "prefixes": {
@@ -19,5 +19,5 @@
     "instructions": ""
   },
   "revision": null,
-  "fixed_trials_path": "/Users/soonsikham/Desktop/my_fv_project/datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json"
+  "fixed_trials_path": "/mnt/ebs/my_fv_project/datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json"
 }
