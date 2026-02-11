@@ -161,6 +161,10 @@ def build_zeroshot_trials(
     tok_add_special = bool(spec.prepend_bos)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+    def normalize_target_for_qa_prefix(target: str) -> str:
+        # Canonical zero-shot boundary: "Q: <query>\nA:" + " <target>".
+        return f" {target.lstrip()}"
+
     rows: List[Dict[str, object]] = []
     for idx, row in enumerate(trials):
         if not isinstance(row, dict):
@@ -172,21 +176,22 @@ def build_zeroshot_trials(
         y_val = row.get("target_str") or query.get("output")
         if not isinstance(x_val, str) or not isinstance(y_val, str):
             raise ValueError(f"trial[{idx}] invalid query/target strings")
-        prefix = f"Q: {x_val}\nA: "
+        target_norm = normalize_target_for_qa_prefix(y_val)
+        prefix = f"Q: {x_val}\nA:"
         target_id = boundary_target_id(
             tokenizer=tokenizer,
             prefix_str=prefix,
-            target_str=y_val,
+            target_str=target_norm,
             tok_add_special=tok_add_special,
         )
         new_row = {
             "q_id": row.get("q_id", "unknown"),
             "trial_idx": int(row.get("trial_idx", idx)),
             "query": query,
-            "target_str": y_val,
+            "target_str": target_norm,
             "target_first_token_id": target_id,
             "corrupted_prompt_str": prefix,
-            "corrupted_full_str": prefix + y_val,
+            "corrupted_full_str": prefix + target_norm,
         }
         for key in ("query_source_index", "demo_source_indices", "demo_order"):
             if key in row:
@@ -197,7 +202,7 @@ def build_zeroshot_trials(
         "meta": {
             "source_sampled_trials_path": str(sampled_trials_path),
             "zero_shot": True,
-            "prompt_format": "Q: <query>\\nA: ",
+            "prompt_format": "Q: <query>\\nA:",
             "model": model_name,
             "model_spec": model_spec_name,
             "tok_add_special": tok_add_special,

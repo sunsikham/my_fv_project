@@ -444,7 +444,14 @@ def compute_function_vector(mean_activations, indirect_effect, model, model_conf
     # Compute Top Influential Heads (L,H)
     h_shape = mean_indirect_effect.shape 
     topk_vals, topk_inds  = torch.topk(mean_indirect_effect.view(-1), k=n_top_heads, largest=True)
-    top_lh = list(zip(*np.unravel_index(topk_inds, h_shape), [round(x.item(),4) for x in topk_vals]))
+    topk_inds_np = topk_inds.detach().cpu().numpy()
+    topk_vals_cpu = topk_vals.detach().cpu()
+    top_lh = list(
+        zip(
+            *np.unravel_index(topk_inds_np, h_shape),
+            [round(x.item(), 4) for x in topk_vals_cpu],
+        )
+    )
     top_heads = top_lh[:n_top_heads]
 
     # Compute Function Vector as sum of influential heads

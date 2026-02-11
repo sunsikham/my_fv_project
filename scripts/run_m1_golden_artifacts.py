@@ -85,6 +85,8 @@ def main() -> int:
         args.save_path_root,
     ]
 
+    fixed_mean_path = producer_dir / f"{args.dataset_name}_mean_head_activations_FIXED.pt"
+
     ie_cmd = [
         "env",
         common_env,
@@ -104,6 +106,8 @@ def main() -> int:
         str(args.n_trials),
         "--fixed_trials_path",
         str(fixed_trials_path),
+        "--mean_activations_path",
+        str(fixed_mean_path),
         "--save_path_root",
         args.save_path_root,
         "--last_token_only",
@@ -111,6 +115,8 @@ def main() -> int:
     ]
 
     run_cmd(avg_cmd, repo_root)
+    if not fixed_mean_path.exists():
+        raise FileNotFoundError(f"Expected fixed mean activations missing: {fixed_mean_path}")
     run_cmd(ie_cmd, repo_root)
 
     required_src_files = [

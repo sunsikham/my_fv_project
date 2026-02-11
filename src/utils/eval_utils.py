@@ -54,7 +54,14 @@ def compute_top_k_elements(x, K=10) -> list:
     """
     h_shape = x.shape
     topk_vals, topk_inds  = torch.topk(x.view(-1), k=K, largest=True)
-    top_lh = list(zip(*np.unravel_index(topk_inds, h_shape), [round(x.item(),4) for x in topk_vals]))
+    topk_inds_np = topk_inds.detach().cpu().numpy()
+    topk_vals_cpu = topk_vals.detach().cpu()
+    top_lh = list(
+        zip(
+            *np.unravel_index(topk_inds_np, h_shape),
+            [round(x.item(), 4) for x in topk_vals_cpu],
+        )
+    )
     top_elements = top_lh[:K]
     return top_elements
 

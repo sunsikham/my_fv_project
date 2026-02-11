@@ -76,8 +76,9 @@ def add_function_vector(edit_layer, fv_vector, device, idx: int = -1):
         current_layer = int(layer_name.split(".")[2])
         if current_layer == edit_layer:
             if isinstance(output, tuple):
-                output[0][:, idx] += fv_vector.to(device)
+                output[0][:, idx] += fv_vector.to(device=output[0].device, dtype=output[0].dtype)
                 return output
+            output[:, idx] += fv_vector.to(device=output.device, dtype=output.dtype)
             return output
         return output
 

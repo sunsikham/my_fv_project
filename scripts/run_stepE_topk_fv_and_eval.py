@@ -160,6 +160,13 @@ def build_fv_global_resid(
         end = start + head_dim
         x_pre[0, 0, start:end] = head_vec
 
+        # Keep matmul input dtype aligned with out_proj weight dtype to avoid
+        # fp32/fp16 mismatch errors on some loader/device combinations.
+        weight = getattr(out_proj, "weight", None)
+        if isinstance(weight, torch.Tensor) and torch.is_floating_point(weight):
+            if x_pre.dtype != weight.dtype:
+                x_pre = x_pre.to(dtype=weight.dtype)
+
         with torch.inference_mode():
             out = out_proj(x_pre)
         if isinstance(out, tuple):

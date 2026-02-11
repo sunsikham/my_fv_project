@@ -145,6 +145,27 @@ def parse_qid_list(value: Optional[str]) -> Optional[List[str]]:
     return qids
 
 
+def stable_text_seed(text: str) -> int:
+    total = 0
+    for idx, ch in enumerate(text):
+        total += (idx + 1) * ord(ch)
+    return total % 2147483647
+
+
+def dedupe_examples_by_query_prefix(
+    examples: List[Dict[str, object]]
+) -> List[Dict[str, object]]:
+    seen = set()
+    deduped: List[Dict[str, object]] = []
+    for row in examples:
+        key = str(row.get("prefix_str", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
 def load_eval_examples_from_trials_json(path: str) -> List[Dict[str, object]]:
     with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
@@ -286,6 +307,11 @@ def main() -> int:
     parser.add_argument("--alpha", type=float, default=1.0, help="Injection scale (default: 1.0)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
     parser.add_argument("--n_eval", type=int, default=20, help="Number of eval prompts")
+    parser.add_argument(
+        "--allow_query_duplicates",
+        action="store_true",
+        help="Allow duplicate query sampling during eval (default: off; no duplicates)",
+    )
     parser.add_argument(
         "--sampled_trials_path",
         default=None,
@@ -694,10 +720,79 @@ def main() -> int:
         q_id = str(row["q_id"])
         if q_id in eval_qids:
             eval_examples_by_qid.setdefault(q_id, []).append(row)
+
+    dropped_dups = 0
+    if not args.allow_query_duplicates:
+        deduped_by_qid: Dict[str, List[Dict[str, object]]] = {}
+        for q_id in eval_qids:
+            original_rows = eval_examples_by_qid.get(q_id, [])
+            deduped_rows = dedupe_examples_by_query_prefix(original_rows)
+            dropped_dups += max(0, len(original_rows) - len(deduped_rows))
+            deduped_by_qid[q_id] = deduped_rows
+        eval_examples_by_qid = deduped_by_qid
+
+    if dropped_dups > 0:
+        print(f"dedupe_by_query: dropped_duplicate_examples={dropped_dups}")
+
+    eval_plan: Optional[List[Dict[str, object]]] = None
+    effective_n_eval = args.n_eval
+    if not args.allow_query_duplicates:
+        eval_plan = []
+        per_qid_pool: Dict[str, List[Dict[str, object]]] = {}
+        per_qid_cursor: Dict[str, int] = {}
+        for q_id in eval_qids:
+            pool = list(eval_examples_by_qid.get(q_id, []))
+            if not pool:
+                continue
+            rng = random.Random(args.seed + stable_text_seed(q_id))
+            rng.shuffle(pool)
+            per_qid_pool[q_id] = pool
+            per_qid_cursor[q_id] = 0
+
+        while len(eval_plan) < args.n_eval:
+            progressed = False
+            for q_id in eval_qids:
+                pool = per_qid_pool.get(q_id, [])
+                cursor = per_qid_cursor.get(q_id, 0)
+                if cursor < len(pool):
+                    eval_plan.append(pool[cursor])
+                    per_qid_cursor[q_id] = cursor + 1
+                    progressed = True
+                    if len(eval_plan) >= args.n_eval:
+                        break
+            if not progressed:
+                break
+
+        effective_n_eval = len(eval_plan)
+        if effective_n_eval == 0:
+            print("No eval examples remain after dedupe/filtering.")
+            return 1
+        if effective_n_eval < args.n_eval:
+            print(
+                "n_eval adjusted to available unique queries: "
+                f"requested={args.n_eval} effective={effective_n_eval}"
+            )
+
     print(f"eval_scope: {eval_scope}")
     print(f"eval_qids: {','.join(eval_qids)}")
+    print(
+        "sampling_mode: "
+        + (
+            "with_replacement (duplicates allowed)"
+            if args.allow_query_duplicates
+            else "without_replacement (query duplicates disallowed)"
+        )
+    )
     log(f"eval_scope: {eval_scope}")
     log(f"eval_qids: {','.join(eval_qids)}")
+    log(
+        "sampling_mode: "
+        + (
+            "with_replacement (duplicates allowed)"
+            if args.allow_query_duplicates
+            else "without_replacement (query duplicates disallowed)"
+        )
+    )
 
     injection_state = {
         "fv": fv,
@@ -762,9 +857,9 @@ def main() -> int:
             f"token={override_info['override_str']}"
         )
 
-    print(f"n_eval start: {args.n_eval}")
+    print(f"n_eval start: {effective_n_eval}")
     idx = 0
-    while idx < args.n_eval:
+    while idx < effective_n_eval:
         batch_prompts = []
         batch_answers = []
         batch_qids = []
@@ -774,13 +869,20 @@ def main() -> int:
         batch_used_ids = []
         batch_used_tokens = []
 
-        remaining = args.n_eval - idx
+        remaining = effective_n_eval - idx
         batch_size = min(args.batch_size, remaining)
         for offset in range(batch_size):
             sample_idx = idx + offset
-            sample_rng = random.Random(args.seed + sample_idx)
-            q_id = eval_qids[sample_idx % len(eval_qids)]
-            sample = sample_rng.choice(eval_examples_by_qid[q_id])
+            if args.allow_query_duplicates:
+                sample_rng = random.Random(args.seed + sample_idx)
+                q_id = eval_qids[sample_idx % len(eval_qids)]
+                sample = sample_rng.choice(eval_examples_by_qid[q_id])
+            else:
+                if eval_plan is None or sample_idx >= len(eval_plan):
+                    print("internal error: eval_plan out of range")
+                    return 1
+                sample = eval_plan[sample_idx]
+                q_id = str(sample["q_id"])
             prefix_str = str(sample["prefix_str"])
             full_raw = sample.get("full_str")
             full_str = str(full_raw) if isinstance(full_raw, str) else None
@@ -1010,7 +1112,7 @@ def main() -> int:
     print(f"fallback_used_count: {fallback_used_count}")
     log(f"fallback_used_count: {fallback_used_count}")
 
-    denom = args.n_eval if args.n_eval else 1
+    denom = effective_n_eval if effective_n_eval else 1
     acc_base = sum_acc_base / denom
     acc_with = sum_acc_with / denom
     delta_acc = acc_with - acc_base
@@ -1073,7 +1175,8 @@ def main() -> int:
         "score_key": args.score_key,
         "heads": fv_meta.get("heads") if fv_meta else None,
         "seed": args.seed,
-        "n_eval": args.n_eval,
+        "n_eval": effective_n_eval,
+        "requested_n_eval": args.n_eval,
         "alpha": args.alpha,
         "fv_source": fv_source,
         "fv_type": fv_kind,
@@ -1103,7 +1206,8 @@ def main() -> int:
             "edit_layer": args.edit_layer,
             "fv_source": fv_source,
             "seed": args.seed,
-            "n_eval": args.n_eval,
+            "n_eval": effective_n_eval,
+            "requested_n_eval": args.n_eval,
             "answer_first_token": args.answer_first_token,
             "alpha": args.alpha,
             "dtype": args.dtype,
@@ -1139,7 +1243,7 @@ def main() -> int:
         out_dir,
         args.model,
         args.edit_layer,
-        args.n_eval,
+        effective_n_eval,
         payload,
         step6_metadata,
     )
