@@ -1,0 +1,31 @@
+{
+  "dataset_name": "antonym",
+  "fixed_trials_id": "fixed_trials_antonym_t10_s10_seed0_llama31_8b",
+  "model_name": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "device": "cuda",
+  "seed": 0,
+  "n_top_heads": 10,
+  "token_class_idx": -1,
+  "top_heads_match": true,
+  "max_abs_diff_src_vs_fv": 0.0,
+  "cosine_src_vs_fv": 1.0,
+  "src_fv_norm": 5.21875,
+  "fv_fv_norm": 5.21875,
+  "runtime_compare": {
+    "runtime_fv_path": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/runtime_align/fv_global_resid_m3_aligned.step6.pt",
+    "runtime_fv_shape": [
+      4096
+    ],
+    "runtime_fv_norm": 5.2192769050598145,
+    "max_abs_diff_runtime_vs_src": 0.0,
+    "max_abs_diff_runtime_vs_fv": 0.0,
+    "cosine_runtime_vs_src": 0.9999996423721313,
+    "cosine_runtime_vs_fv": 0.9999996423721313
+  },
+  "artifacts": {
+    "src_fv": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/fv_generation_compare/src_fv.pt",
+    "fv_fv": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/fv_generation_compare/fv_fv.pt",
+    "src_top_heads": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/fv_generation_compare/src_top_heads.json",
+    "fv_top_heads": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/fv_generation_compare/fv_top_heads.json"
+  }
+}

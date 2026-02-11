@@ -1,0 +1,90 @@
+{
+  "parity_path": "results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/injection_parity_trials.csv",
+  "runtime_path": "results_fv/antonym_runtime_r2_m3_aligned/artifacts/step6/layer_9/eval_trials.jsonl",
+  "summary": {
+    "n_trials_compared": 5,
+    "all_target_id_match": true,
+    "max_abs_diff_clean_logprob": 0.001926422119140625,
+    "max_abs_diff_with_logprob": 0.001373291015625,
+    "max_abs_diff_delta_logprob": 0.0009756088256835938,
+    "mean_delta_parity": 1.571875,
+    "mean_delta_runtime": 1.5719085693359376
+  },
+  "rows": [
+    {
+      "trial_idx": 0,
+      "target_id_parity": 4335,
+      "target_id_runtime": 4335,
+      "target_id_match": 1,
+      "clean_logprob_parity": -3.951171875,
+      "clean_logprob_runtime": -3.950697898864746,
+      "with_logprob_parity": -2.3671875,
+      "with_logprob_runtime": -2.3672847747802734,
+      "delta_logprob_parity": 1.583984375,
+      "delta_logprob_runtime": 1.5834131240844727,
+      "abs_diff_clean": 0.00047397613525390625,
+      "abs_diff_with": 9.72747802734375e-05,
+      "abs_diff_delta": 0.0005712509155273438
+    },
+    {
+      "trial_idx": 1,
+      "target_id_parity": 2997,
+      "target_id_runtime": 2997,
+      "target_id_match": 1,
+      "clean_logprob_parity": -6.69140625,
+      "clean_logprob_runtime": -6.689864158630371,
+      "with_logprob_parity": -3.06640625,
+      "with_logprob_runtime": -3.0658397674560547,
+      "delta_logprob_parity": 3.625,
+      "delta_logprob_runtime": 3.6240243911743164,
+      "abs_diff_clean": 0.0015420913696289062,
+      "abs_diff_with": 0.0005664825439453125,
+      "abs_diff_delta": 0.0009756088256835938
+    },
+    {
+      "trial_idx": 2,
+      "target_id_parity": 31926,
+      "target_id_runtime": 31926,
+      "target_id_match": 1,
+      "clean_logprob_parity": -1.46875,
+      "clean_logprob_runtime": -1.4689817428588867,
+      "with_logprob_parity": -1.189453125,
+      "with_logprob_runtime": -1.1891231536865234,
+      "delta_logprob_parity": 0.279296875,
+      "delta_logprob_runtime": 0.2798585891723633,
+      "abs_diff_clean": 0.00023174285888671875,
+      "abs_diff_with": 0.0003299713134765625,
+      "abs_diff_delta": 0.0005617141723632812
+    },
+    {
+      "trial_idx": 3,
+      "target_id_parity": 17676,
+      "target_id_runtime": 17676,
+      "target_id_match": 1,
+      "clean_logprob_parity": -6.984375,
+      "clean_logprob_runtime": -6.986301422119141,
+      "with_logprob_parity": -6.6171875,
+      "with_logprob_runtime": -6.618560791015625,
+      "delta_logprob_parity": 0.3671875,
+      "delta_logprob_runtime": 0.3677406311035156,
+      "abs_diff_clean": 0.001926422119140625,
+      "abs_diff_with": 0.001373291015625,
+      "abs_diff_delta": 0.000553131103515625
+    },
+    {
+      "trial_idx": 4,
+      "target_id_parity": 20874,
+      "target_id_runtime": 20874,
+      "target_id_match": 1,
+      "clean_logprob_parity": -7.13671875,
+      "clean_logprob_runtime": -7.136198043823242,
+      "with_logprob_parity": -5.1328125,
+      "with_logprob_runtime": -5.131691932678223,
+      "delta_logprob_parity": 2.00390625,
+      "delta_logprob_runtime": 2.0045061111450195,
+      "abs_diff_clean": 0.0005207061767578125,
+      "abs_diff_with": 0.0011205673217773438,
+      "abs_diff_delta": 0.0005998611450195312
+    }
+  ]
+}

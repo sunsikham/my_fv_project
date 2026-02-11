@@ -1,0 +1,302 @@
+{
+  "q_id": "Q16",
+  "score_key": "mean_delta_p",
+  "expected_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "completed_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "missing_layers": [],
+  "best_layer": 12,
+  "best_score": 0.044406448910012844,
+  "per_layer": {
+    "0": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_0",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_0/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer0_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_0/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.013308659363974584
+    },
+    "1": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_1",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_1/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer1_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_1/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.012022094906569691
+    },
+    "2": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_2",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_2/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer2_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_2/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.011393992900320882
+    },
+    "3": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_3",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_3/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer3_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_3/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.00013720267579628854
+    },
+    "4": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_4",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_4/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer4_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_4/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.019492869012901794
+    },
+    "5": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_5",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_5/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer5_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_5/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.019031613885454136
+    },
+    "6": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_6",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_6/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer6_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_6/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.018463198000972625
+    },
+    "7": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_7",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_7/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer7_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_7/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.023851470492081715
+    },
+    "8": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_8",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_8/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer8_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_8/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.02114661469240673
+    },
+    "9": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_9",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_9/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer9_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_9/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.017178268713178114
+    },
+    "10": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_10",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_10/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer10_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_10/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.009697692247573286
+    },
+    "11": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_11",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_11/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer11_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_11/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.01919611629564315
+    },
+    "12": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_12",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_12/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer12_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_12/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.044406448910012844
+    },
+    "13": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_13",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_13/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer13_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_13/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.03785193514777348
+    },
+    "14": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_14",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_14/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer14_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_14/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.013805441139265896
+    },
+    "15": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_15",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_15/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer15_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_15/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.01051880040904507
+    },
+    "16": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_16",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_16/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer16_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_16/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.013496359915006906
+    },
+    "17": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_17",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_17/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer17_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_17/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.00830783689452801
+    },
+    "18": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_18",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_18/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer18_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_18/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.0064879366924287755
+    },
+    "19": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_19",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_19/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer19_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_19/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.0027019566477974877
+    },
+    "20": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_20",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_20/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer20_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_20/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.0006746073137037456
+    },
+    "21": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_21",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_21/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer21_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_21/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.0011163218456204048
+    },
+    "22": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_22",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_22/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer22_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_22/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.0004564614733681083
+    },
+    "23": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_23",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_23/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer23_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_23/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.00026835039097932166
+    },
+    "24": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_24",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_24/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer24_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_24/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.0002786673838272691
+    },
+    "25": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_25",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_25/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer25_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_25/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": -0.0014029547906829975
+    },
+    "26": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_26",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_26/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer26_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_26/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.0009201051245327108
+    },
+    "27": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_27",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_27/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer27_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_27/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.00019047539972234518
+    },
+    "28": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_28",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_28/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer28_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_28/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.00023138868782552892
+    },
+    "29": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_29",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_29/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer29_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_29/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.014415816898690537
+    },
+    "30": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_30",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_30/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer30_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_30/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.031501259889046195
+    },
+    "31": {
+      "layer_dir": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_31",
+      "results_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_31/step6_results__mnt_ebs_.hf_cache_hub_models--meta-llama--Llama-3.1-8B_snapshots_d04e592bb4f6aa9cfee91e2e20afa771667e1d4b_layer31_n10.json",
+      "eval_summary_path": "/mnt/ebs/my_fv_project/results_fv/relation_qwise/relationB_ex/_super_fv/super_fv_q1_q5_q8_q9_q11_q13_q16_q17_q18_20260211_113457/eval_by_q/Q16/layer_31/eval_summary.json",
+      "score_key": "mean_delta_p",
+      "score_value": 0.007405296991419163
+    }
+  },
+  "generated_at": "2026-02-11T12:45:52.382840Z"
+}

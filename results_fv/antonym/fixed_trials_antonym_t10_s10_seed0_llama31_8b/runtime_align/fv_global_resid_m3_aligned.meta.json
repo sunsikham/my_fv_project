@@ -1,0 +1,62 @@
+{
+  "source": "M1 mean/IE (fixed_trials_antonym_t10_s10_seed0_llama31_8b)",
+  "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "seed": 0,
+  "n_top_heads": 10,
+  "token_class_idx": -1,
+  "edit_layer_for_compare": 9,
+  "fv_norm": 5.21875,
+  "fv_absmax": 0.318115234375,
+  "top_heads": [
+    [
+      15,
+      17,
+      0.0412
+    ],
+    [
+      13,
+      27,
+      0.0384
+    ],
+    [
+      16,
+      29,
+      0.0257
+    ],
+    [
+      13,
+      31,
+      0.0093
+    ],
+    [
+      15,
+      1,
+      0.0091
+    ],
+    [
+      15,
+      19,
+      0.0091
+    ],
+    [
+      15,
+      16,
+      0.0072
+    ],
+    [
+      16,
+      28,
+      0.0069
+    ],
+    [
+      13,
+      22,
+      0.0056
+    ],
+    [
+      10,
+      5,
+      0.0056
+    ]
+  ]
+}

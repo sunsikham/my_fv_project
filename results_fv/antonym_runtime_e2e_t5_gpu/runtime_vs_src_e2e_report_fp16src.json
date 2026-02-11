@@ -1,0 +1,7 @@
+{
+  "model_name": "/tmp/llama31_model_fp16",
+  "n_trials": 5,
+  "max_abs_diff_delta_logprob": 0.0016031265258789062,
+  "mean_delta_runtime": 2.236920166015625,
+  "mean_delta_src": 2.23671875
+}

@@ -1,0 +1,17 @@
+{
+  "n_layers_compared": 32,
+  "best_acc_with_orig": {
+    "layer": 0,
+    "acc_with": 0.0,
+    "delta_acc": 0.0
+  },
+  "best_acc_with_lc": {
+    "layer": 10,
+    "acc_with": 0.1,
+    "delta_acc": 0.1
+  },
+  "mean_acc_with_orig": 0.0,
+  "mean_acc_with_lc": 0.003125,
+  "mean_delta_acc_orig": 0.0,
+  "mean_delta_acc_lc": 0.003125
+}

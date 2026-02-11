@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "source": "fixed_trials_m3_prefix5",
+    "note": "schema aligned for step6 runtime comparison"
+  },
+  "trials": [
+    {
+      "q_id": "t0000",
+      "trial_idx": 0,
+      "trial_id": 0,
+      "corrupted_prompt_str": "Q: interrogation\nA: official\n\nQ: stranger\nA: genius\n\nQ: incompetence\nA: adult\n\nQ: antagonist\nA: competence\n\nQ: unofficial\nA: dull\n\nQ: brilliant\nA: familiar\n\nQ: child\nA: protagonist\n\nQ: idiot\nA: discrepancy\n\nQ: retired\nA: employed\n\nQ: analogy\nA: explanation\n\nQ: dusty\nA:",
+      "target_str": " clean",
+      "target_first_token_id": 4335
+    },
+    {
+      "q_id": "t0001",
+      "trial_idx": 1,
+      "trial_id": 1,
+      "corrupted_prompt_str": "Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
+      "target_str": " include",
+      "target_first_token_id": 2997
+    },
+    {
+      "q_id": "t0002",
+      "trial_idx": 2,
+      "trial_id": 2,
+      "corrupted_prompt_str": "Q: previous\nA: ordinary\n\nQ: sick\nA: healthy\n\nQ: humid\nA: next\n\nQ: premium\nA: basic\n\nQ: confident\nA: disrespect\n\nQ: respect\nA: experienced\n\nQ: moist\nA: insecure\n\nQ: exceptional\nA: dry\n\nQ: inexperienced\nA: dry\n\nQ: authorize\nA: prohibit\n\nQ: comedy\nA:",
+      "target_str": " tragedy",
+      "target_first_token_id": 31926
+    },
+    {
+      "q_id": "t0003",
+      "trial_idx": 3,
+      "trial_id": 3,
+      "corrupted_prompt_str": "Q: intricate\nA: married\n\nQ: harmless\nA: permanent\n\nQ: virtual\nA: simple\n\nQ: sink\nA: narrow\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: harmful\n\nQ: single\nA: float\n\nQ: interim\nA: real\n\nQ: fiction\nA: floor\n\nQ: ceiling\nA: nonfiction\n\nQ: muff\nA:",
+      "target_str": " sharp",
+      "target_first_token_id": 17676
+    },
+    {
+      "q_id": "t0004",
+      "trial_idx": 4,
+      "trial_id": 4,
+      "corrupted_prompt_str": "Q: empirical\nA: function\n\nQ: supreme\nA: destroy\n\nQ: make\nA: regressive\n\nQ: security\nA: withdraw\n\nQ: malfunction\nA: inferior\n\nQ: invest\nA: collect\n\nQ: progressive\nA: amateur\n\nQ: pretty\nA: risk\n\nQ: professional\nA: ugly\n\nQ: distribute\nA: theoretical\n\nQ: cooperate\nA:",
+      "target_str": " compete",
+      "target_first_token_id": 20874
+    }
+  ]
+}

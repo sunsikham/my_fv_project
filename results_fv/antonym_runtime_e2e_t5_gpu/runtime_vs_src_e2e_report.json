@@ -1,0 +1,17 @@
+{
+  "runtime_trials_path": "/mnt/ebs/my_fv_project/results_fv/antonym_runtime_e2e_t5_gpu/step6/layer_9/eval_trials.jsonl",
+  "runtime_fv_path": "/mnt/ebs/my_fv_project/results_fv/antonym_runtime_e2e_t5_gpu/stepE/artifacts/fv_global_resid.pt",
+  "model_name": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "edit_layer": 9,
+  "n_trials": 5,
+  "max_abs_diff_clean_logprob": 0.7452678680419922,
+  "max_abs_diff_with_logprob": 0.6288003921508789,
+  "max_abs_diff_delta_logprob": 0.12845611572265625,
+  "mean_delta_runtime": 2.236920166015625,
+  "mean_delta_src": 2.3359375,
+  "acc_base_match_count": 5,
+  "acc_with_match_count": 5,
+  "all_acc_base_match": true,
+  "all_acc_with_match": true,
+  "trials_csv": "/mnt/ebs/my_fv_project/results_fv/antonym_runtime_e2e_t5_gpu/runtime_vs_src_e2e_trials.csv"
+}

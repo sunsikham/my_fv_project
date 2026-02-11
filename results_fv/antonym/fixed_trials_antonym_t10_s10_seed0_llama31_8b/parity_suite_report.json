@@ -1,0 +1,51 @@
+{
+  "status": "PASS",
+  "dataset_name": "antonym",
+  "fixed_trials_id": "fixed_trials_antonym_t10_s10_seed0_llama31_8b",
+  "model_name": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "seed": 0,
+  "earliest_failed_stage": null,
+  "stages": [
+    {
+      "name": "prompt",
+      "status": "PASS",
+      "cmd": "/mnt/ebs/venv/bin/python scripts/verify_prompt_parity.py --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_llama31_8b.json --max_trials 5 --model_name_for_tokenizer /mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": null,
+      "duration_sec": 4.373227690999556
+    },
+    {
+      "name": "slot",
+      "status": "PASS",
+      "cmd": "/mnt/ebs/venv/bin/python scripts/verify_slot_parity_against_src.py --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_llama31_8b.json --max_trials 5 --mode corrupted --tokenizer_name /mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": null,
+      "duration_sec": 4.646933177000392
+    },
+    {
+      "name": "fv",
+      "status": "PASS",
+      "cmd": "/mnt/ebs/venv/bin/python scripts/verify_fv_parity.py --dataset_name antonym --fixed_trials_id fixed_trials_antonym_t10_s10_seed0_llama31_8b --results_root results --model_name /mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b --device cuda --seed 0 --n_top_heads 10 --token_class_idx -1 --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": 0.0,
+      "duration_sec": 18.087883924999915
+    },
+    {
+      "name": "injection",
+      "status": "PASS",
+      "cmd": "/mnt/ebs/venv/bin/python scripts/verify_injection_parity.py --dataset_name antonym --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_llama31_8b.json --fixed_trials_id fixed_trials_antonym_t10_s10_seed0_llama31_8b --results_root results --results_fv_root results_fv --model_name /mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b --device cuda --seed 0 --n_top_heads 10 --token_class_idx -1 --edit_layer 9 --max_trials 5 --assert_zero",
+      "exit_code": 0,
+      "mismatch_count": 0,
+      "max_abs_diff": 0.0,
+      "duration_sec": 20.835156326998913
+    }
+  ],
+  "paths": {
+    "log": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/parity_suite.log",
+    "csv": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/parity_suite_stages.csv",
+    "report": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/parity_suite_report.json"
+  }
+}

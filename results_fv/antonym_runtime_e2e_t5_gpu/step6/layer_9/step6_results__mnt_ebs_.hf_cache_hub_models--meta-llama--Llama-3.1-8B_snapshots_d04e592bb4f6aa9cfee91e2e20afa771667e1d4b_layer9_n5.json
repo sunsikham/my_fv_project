@@ -1,0 +1,414 @@
+{
+  "config": {
+    "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+    "model_spec": "llama3",
+    "edit_layer": 9,
+    "fv_source": "fv_global_resid",
+    "seed": 0,
+    "n_eval": 5,
+    "answer_first_token": "auto",
+    "alpha": 1.0,
+    "dtype": "fp16",
+    "device": "cuda",
+    "batch_size": 1,
+    "score_key": "mean_delta_logprob"
+  },
+  "fv": {
+    "shape": [
+      4096
+    ],
+    "norm": 5.359375
+  },
+  "summary": {
+    "acc_base": 0.2,
+    "acc_with": 0.8,
+    "delta_acc": 0.6000000000000001,
+    "mean_logit_base": 8.3609375,
+    "mean_logit_with": 10.94375,
+    "mean_delta_logit": 2.5828125,
+    "std_delta_logit": 1.055868551685057,
+    "mean_logprob_base": -5.681466484069825,
+    "mean_logprob_with": -3.4445463180541993,
+    "mean_delta_logprob": 2.236920166015625,
+    "std_delta_logprob": 1.2595861444063774,
+    "mean_p_base": 0.006159268692135811,
+    "mean_p_with": 0.0567112349672243,
+    "mean_delta_p": 0.05055196627508849,
+    "std_delta_p": 0.025191526033887628
+  },
+  "per_qid": {
+    "None": {
+      "n_eval": 5,
+      "acc_base": 0.2,
+      "acc_with": 0.8,
+      "delta_acc": 0.6,
+      "mean_delta_logit": 2.5828125,
+      "mean_delta_logprob": 2.236920166015625,
+      "mean_delta_p": 0.05055196627508849,
+      "std_delta_logit": 1.055868551685057,
+      "std_delta_logprob": 1.2595861444063774,
+      "std_delta_p": 0.025191526033887628
+    }
+  },
+  "matrix": {
+    "__global__": {
+      "None": 2.236920166015625
+    }
+  },
+  "metadata": {
+    "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+    "model_spec": "llama3",
+    "edit_layer": 9,
+    "injection_point": "residual",
+    "slot": "query_predictive",
+    "slot_name": "query_predictive",
+    "slot_index_rule": "s=len(tokenize(prefix_str)); slot_index=s-1; target_id=input_ids[s]",
+    "token_rule": "t_idx = seq_len - 1 (last token of prefix)",
+    "score_key": "mean_delta_logprob",
+    "heads": [
+      {
+        "layer": 13,
+        "head": 27,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.046491050720214845,
+        "mean_delta_logprob": 1.2623046875,
+        "mean_delta_p": 0.046491050720214845,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 17,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.03538026809692383,
+        "mean_delta_logprob": 0.7275390625,
+        "mean_delta_p": 0.03538026809692383,
+        "n_trials": 5
+      },
+      {
+        "layer": 16,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.024605751037597656,
+        "mean_delta_logprob": 0.7166015625,
+        "mean_delta_p": 0.024605751037597656,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 19,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.010204124450683593,
+        "mean_delta_logprob": 0.1896484375,
+        "mean_delta_p": 0.010204124450683593,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 1,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.008336448669433593,
+        "mean_delta_logprob": 0.2078125,
+        "mean_delta_p": 0.008336448669433593,
+        "n_trials": 5
+      },
+      {
+        "layer": 13,
+        "head": 31,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.008037948608398437,
+        "mean_delta_logprob": 0.262890625,
+        "mean_delta_p": 0.008037948608398437,
+        "n_trials": 5
+      },
+      {
+        "layer": 10,
+        "head": 5,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.007324600219726562,
+        "mean_delta_logprob": 0.60625,
+        "mean_delta_p": 0.007324600219726562,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 16,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.006506538391113282,
+        "mean_delta_logprob": 0.1060546875,
+        "mean_delta_p": 0.006506538391113282,
+        "n_trials": 5
+      },
+      {
+        "layer": 11,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.005735015869140625,
+        "mean_delta_logprob": 0.151171875,
+        "mean_delta_p": 0.005735015869140625,
+        "n_trials": 5
+      },
+      {
+        "layer": 14,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.004794120788574219,
+        "mean_delta_logprob": 0.1556640625,
+        "mean_delta_p": 0.004794120788574219,
+        "n_trials": 5
+      }
+    ],
+    "seed": 0,
+    "n_eval": 5,
+    "alpha": 1.0,
+    "fv_source": "fv_global_resid",
+    "fv_type": "global",
+    "fv_source_qid": null,
+    "eval_scope": "all_qids",
+    "eval_qids": [
+      "None"
+    ],
+    "config": {
+      "n_heads": 32,
+      "head_dim": 128,
+      "resid_dim": 4096,
+      "hook_type": "pre",
+      "reshape": "resid_to_heads",
+      "hook_target": "model.layers.{layer}.self_attn.o_proj",
+      "dtype": "fp16",
+      "device": "cuda",
+      "batch_size": 1
+    },
+    "fv": {
+      "shape": [
+        4096
+      ],
+      "norm": 5.359375
+    },
+    "fv_meta": {
+      "spec_name": "llama3",
+      "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+      "run_id_stepD": null,
+      "heads": [
+        {
+          "layer": 13,
+          "head": 27,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.046491050720214845,
+          "mean_delta_logprob": 1.2623046875,
+          "mean_delta_p": 0.046491050720214845,
+          "n_trials": 5
+        },
+        {
+          "layer": 15,
+          "head": 17,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.03538026809692383,
+          "mean_delta_logprob": 0.7275390625,
+          "mean_delta_p": 0.03538026809692383,
+          "n_trials": 5
+        },
+        {
+          "layer": 16,
+          "head": 29,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.024605751037597656,
+          "mean_delta_logprob": 0.7166015625,
+          "mean_delta_p": 0.024605751037597656,
+          "n_trials": 5
+        },
+        {
+          "layer": 15,
+          "head": 19,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.010204124450683593,
+          "mean_delta_logprob": 0.1896484375,
+          "mean_delta_p": 0.010204124450683593,
+          "n_trials": 5
+        },
+        {
+          "layer": 15,
+          "head": 1,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.008336448669433593,
+          "mean_delta_logprob": 0.2078125,
+          "mean_delta_p": 0.008336448669433593,
+          "n_trials": 5
+        },
+        {
+          "layer": 13,
+          "head": 31,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.008037948608398437,
+          "mean_delta_logprob": 0.262890625,
+          "mean_delta_p": 0.008037948608398437,
+          "n_trials": 5
+        },
+        {
+          "layer": 10,
+          "head": 5,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.007324600219726562,
+          "mean_delta_logprob": 0.60625,
+          "mean_delta_p": 0.007324600219726562,
+          "n_trials": 5
+        },
+        {
+          "layer": 15,
+          "head": 16,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.006506538391113282,
+          "mean_delta_logprob": 0.1060546875,
+          "mean_delta_p": 0.006506538391113282,
+          "n_trials": 5
+        },
+        {
+          "layer": 11,
+          "head": 29,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.005735015869140625,
+          "mean_delta_logprob": 0.151171875,
+          "mean_delta_p": 0.005735015869140625,
+          "n_trials": 5
+        },
+        {
+          "layer": 14,
+          "head": 29,
+          "score_key": "mean_delta_p",
+          "rank_score": 0.004794120788574219,
+          "mean_delta_logprob": 0.1556640625,
+          "mean_delta_p": 0.004794120788574219,
+          "n_trials": 5
+        }
+      ],
+      "token_position_rule": "t_idx = seq_len - 1 (last token of prefix)"
+    },
+    "timestamp": "2026-02-10T17:52:48.978860Z"
+  },
+  "results": [
+    {
+      "idx": 0,
+      "q_id": "None",
+      "prompt": "Q: intricate\nA: married\n\nQ: harmless\nA: permanent\n\nQ: virtual\nA: simple\n\nQ: sink\nA: narrow\n\nQ: catalyst\nA: inhibitor\n\nQ: broad\nA: harmful\n\nQ: single\nA: float\n\nQ: interim\nA: real\n\nQ: fiction\nA: floor\n\nQ: ceiling\nA: nonfiction\n\nQ: muff\nA:",
+      "answer": " sharp",
+      "target_id": 17676,
+      "target_token": "\u0120sharp",
+      "leading_space": true,
+      "used_id": 17676,
+      "used_token": "\u0120sharp",
+      "pred_id_base": 55404,
+      "pred_id_with": 55404,
+      "accuracy_base": 0.0,
+      "accuracy_with": 0.0,
+      "delta_acc": 0.0,
+      "logit_base": 6.9765625,
+      "logit_with": 7.6171875,
+      "delta_logit": 0.640625,
+      "logprob_base": -6.741594314575195,
+      "logprob_with": -6.584894180297852,
+      "delta_logprob": 0.15670013427734375,
+      "p_base": 0.0011807631235569715,
+      "p_with": 0.0013810734963044524,
+      "delta_p": 0.00020031037274748087
+    },
+    {
+      "idx": 1,
+      "q_id": "None",
+      "prompt": "Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
+      "answer": " include",
+      "target_id": 2997,
+      "target_token": "\u0120include",
+      "leading_space": true,
+      "used_id": 2997,
+      "used_token": "\u0120include",
+      "pred_id_base": 7417,
+      "pred_id_with": 2997,
+      "accuracy_base": 0.0,
+      "accuracy_with": 1.0,
+      "delta_acc": 1.0,
+      "logit_base": 8.171875,
+      "logit_with": 11.5078125,
+      "delta_logit": 3.3359375,
+      "logprob_base": -5.946138381958008,
+      "logprob_with": -2.730574607849121,
+      "delta_logprob": 3.2155637741088867,
+      "p_base": 0.0026159228291362524,
+      "p_with": 0.06518182903528214,
+      "delta_p": 0.06256590620614588
+    },
+    {
+      "idx": 2,
+      "q_id": "None",
+      "prompt": "Q: interrogation\nA: official\n\nQ: stranger\nA: genius\n\nQ: incompetence\nA: adult\n\nQ: antagonist\nA: competence\n\nQ: unofficial\nA: dull\n\nQ: brilliant\nA: familiar\n\nQ: child\nA: protagonist\n\nQ: idiot\nA: discrepancy\n\nQ: retired\nA: employed\n\nQ: analogy\nA: explanation\n\nQ: dusty\nA:",
+      "answer": " clean",
+      "target_id": 4335,
+      "target_token": "\u0120clean",
+      "leading_space": true,
+      "used_id": 4335,
+      "used_token": "\u0120clean",
+      "pred_id_base": 4335,
+      "pred_id_with": 4335,
+      "accuracy_base": 1.0,
+      "accuracy_with": 1.0,
+      "delta_acc": 0.0,
+      "logit_base": 10.3125,
+      "logit_with": 12.578125,
+      "delta_logit": 2.265625,
+      "logprob_base": -3.8273229598999023,
+      "logprob_with": -2.4461135864257812,
+      "delta_logprob": 1.381209373474121,
+      "p_base": 0.021767811849713326,
+      "p_with": 0.08662961423397064,
+      "delta_p": 0.06486180238425732
+    },
+    {
+      "idx": 3,
+      "q_id": "None",
+      "prompt": "Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
+      "answer": " include",
+      "target_id": 2997,
+      "target_token": "\u0120include",
+      "leading_space": true,
+      "used_id": 2997,
+      "used_token": "\u0120include",
+      "pred_id_base": 7417,
+      "pred_id_with": 2997,
+      "accuracy_base": 0.0,
+      "accuracy_with": 1.0,
+      "delta_acc": 1.0,
+      "logit_base": 8.171875,
+      "logit_with": 11.5078125,
+      "delta_logit": 3.3359375,
+      "logprob_base": -5.946138381958008,
+      "logprob_with": -2.730574607849121,
+      "delta_logprob": 3.2155637741088867,
+      "p_base": 0.0026159228291362524,
+      "p_with": 0.06518182903528214,
+      "delta_p": 0.06256590620614588
+    },
+    {
+      "idx": 4,
+      "q_id": "None",
+      "prompt": "Q: outdoor\nA: slow\n\nQ: quick\nA: neat\n\nQ: messy\nA: straightforward\n\nQ: acquaintance\nA: improve\n\nQ: sustain\nA: indoor\n\nQ: convoluted\nA: deplete\n\nQ: popular\nA: apathy\n\nQ: curiosity\nA: innocence\n\nQ: worsen\nA: stranger\n\nQ: guilt\nA: unpopular\n\nQ: exclude\nA:",
+      "answer": " include",
+      "target_id": 2997,
+      "target_token": "\u0120include",
+      "leading_space": true,
+      "used_id": 2997,
+      "used_token": "\u0120include",
+      "pred_id_base": 7417,
+      "pred_id_with": 2997,
+      "accuracy_base": 0.0,
+      "accuracy_with": 1.0,
+      "delta_acc": 1.0,
+      "logit_base": 8.171875,
+      "logit_with": 11.5078125,
+      "delta_logit": 3.3359375,
+      "logprob_base": -5.946138381958008,
+      "logprob_with": -2.730574607849121,
+      "delta_logprob": 3.2155637741088867,
+      "p_base": 0.0026159228291362524,
+      "p_with": 0.06518182903528214,
+      "delta_p": 0.06256590620614588
+    }
+  ]
+}

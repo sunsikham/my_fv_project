@@ -1,0 +1,17 @@
+{
+  "acc_base": 0.0,
+  "acc_with": 0.2,
+  "delta_acc": 0.2,
+  "mean_logit_base": 7.687890625,
+  "mean_logit_with": 9.39140625,
+  "mean_delta_logit": 1.703515625,
+  "std_delta_logit": 0.7053035910284153,
+  "mean_logprob_base": -6.482449626922607,
+  "mean_logprob_with": -5.418338394165039,
+  "mean_delta_logprob": 1.0641112327575684,
+  "std_delta_logprob": 0.5290954445478575,
+  "mean_p_base": 0.01547693213178718,
+  "mean_p_with": 0.023776247576461174,
+  "mean_delta_p": 0.008299315444673994,
+  "std_delta_p": 0.011537181484068765
+}

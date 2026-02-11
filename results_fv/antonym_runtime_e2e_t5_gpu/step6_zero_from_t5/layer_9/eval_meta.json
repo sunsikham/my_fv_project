@@ -1,0 +1,229 @@
+{
+  "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "model_spec": "llama3",
+  "edit_layer": 9,
+  "injection_point": "residual",
+  "slot": "query_predictive",
+  "slot_name": "query_predictive",
+  "slot_index_rule": "s=len(tokenize(prefix_str)); slot_index=s-1; target_id=input_ids[s]",
+  "token_rule": "t_idx = seq_len - 1 (last token of prefix)",
+  "score_key": "mean_delta_logprob",
+  "heads": [
+    {
+      "layer": 13,
+      "head": 27,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.046491050720214845,
+      "mean_delta_logprob": 1.2623046875,
+      "mean_delta_p": 0.046491050720214845,
+      "n_trials": 5
+    },
+    {
+      "layer": 15,
+      "head": 17,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.03538026809692383,
+      "mean_delta_logprob": 0.7275390625,
+      "mean_delta_p": 0.03538026809692383,
+      "n_trials": 5
+    },
+    {
+      "layer": 16,
+      "head": 29,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.024605751037597656,
+      "mean_delta_logprob": 0.7166015625,
+      "mean_delta_p": 0.024605751037597656,
+      "n_trials": 5
+    },
+    {
+      "layer": 15,
+      "head": 19,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.010204124450683593,
+      "mean_delta_logprob": 0.1896484375,
+      "mean_delta_p": 0.010204124450683593,
+      "n_trials": 5
+    },
+    {
+      "layer": 15,
+      "head": 1,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.008336448669433593,
+      "mean_delta_logprob": 0.2078125,
+      "mean_delta_p": 0.008336448669433593,
+      "n_trials": 5
+    },
+    {
+      "layer": 13,
+      "head": 31,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.008037948608398437,
+      "mean_delta_logprob": 0.262890625,
+      "mean_delta_p": 0.008037948608398437,
+      "n_trials": 5
+    },
+    {
+      "layer": 10,
+      "head": 5,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.007324600219726562,
+      "mean_delta_logprob": 0.60625,
+      "mean_delta_p": 0.007324600219726562,
+      "n_trials": 5
+    },
+    {
+      "layer": 15,
+      "head": 16,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.006506538391113282,
+      "mean_delta_logprob": 0.1060546875,
+      "mean_delta_p": 0.006506538391113282,
+      "n_trials": 5
+    },
+    {
+      "layer": 11,
+      "head": 29,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.005735015869140625,
+      "mean_delta_logprob": 0.151171875,
+      "mean_delta_p": 0.005735015869140625,
+      "n_trials": 5
+    },
+    {
+      "layer": 14,
+      "head": 29,
+      "score_key": "mean_delta_p",
+      "rank_score": 0.004794120788574219,
+      "mean_delta_logprob": 0.1556640625,
+      "mean_delta_p": 0.004794120788574219,
+      "n_trials": 5
+    }
+  ],
+  "seed": 0,
+  "n_eval": 5,
+  "alpha": 1.0,
+  "fv_source": "fv_global_resid",
+  "fv_type": "global",
+  "fv_source_qid": null,
+  "eval_scope": "all_qids",
+  "eval_qids": [
+    "None"
+  ],
+  "config": {
+    "n_heads": 32,
+    "head_dim": 128,
+    "resid_dim": 4096,
+    "hook_type": "pre",
+    "reshape": "resid_to_heads",
+    "hook_target": "model.layers.{layer}.self_attn.o_proj",
+    "dtype": "fp16",
+    "device": "cuda",
+    "batch_size": 1
+  },
+  "fv": {
+    "shape": [
+      4096
+    ],
+    "norm": 5.359375
+  },
+  "fv_meta": {
+    "spec_name": "llama3",
+    "model": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+    "run_id_stepD": null,
+    "heads": [
+      {
+        "layer": 13,
+        "head": 27,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.046491050720214845,
+        "mean_delta_logprob": 1.2623046875,
+        "mean_delta_p": 0.046491050720214845,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 17,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.03538026809692383,
+        "mean_delta_logprob": 0.7275390625,
+        "mean_delta_p": 0.03538026809692383,
+        "n_trials": 5
+      },
+      {
+        "layer": 16,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.024605751037597656,
+        "mean_delta_logprob": 0.7166015625,
+        "mean_delta_p": 0.024605751037597656,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 19,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.010204124450683593,
+        "mean_delta_logprob": 0.1896484375,
+        "mean_delta_p": 0.010204124450683593,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 1,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.008336448669433593,
+        "mean_delta_logprob": 0.2078125,
+        "mean_delta_p": 0.008336448669433593,
+        "n_trials": 5
+      },
+      {
+        "layer": 13,
+        "head": 31,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.008037948608398437,
+        "mean_delta_logprob": 0.262890625,
+        "mean_delta_p": 0.008037948608398437,
+        "n_trials": 5
+      },
+      {
+        "layer": 10,
+        "head": 5,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.007324600219726562,
+        "mean_delta_logprob": 0.60625,
+        "mean_delta_p": 0.007324600219726562,
+        "n_trials": 5
+      },
+      {
+        "layer": 15,
+        "head": 16,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.006506538391113282,
+        "mean_delta_logprob": 0.1060546875,
+        "mean_delta_p": 0.006506538391113282,
+        "n_trials": 5
+      },
+      {
+        "layer": 11,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.005735015869140625,
+        "mean_delta_logprob": 0.151171875,
+        "mean_delta_p": 0.005735015869140625,
+        "n_trials": 5
+      },
+      {
+        "layer": 14,
+        "head": 29,
+        "score_key": "mean_delta_p",
+        "rank_score": 0.004794120788574219,
+        "mean_delta_logprob": 0.1556640625,
+        "mean_delta_p": 0.004794120788574219,
+        "n_trials": 5
+      }
+    ],
+    "token_position_rule": "t_idx = seq_len - 1 (last token of prefix)"
+  },
+  "timestamp": "2026-02-10T18:13:45.125605Z"
+}

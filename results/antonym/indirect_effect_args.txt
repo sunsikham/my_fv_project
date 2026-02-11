@@ -1,14 +1,14 @@
 {
   "dataset_name": "antonym",
-  "model_name": "gpt2",
+  "model_name": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
   "root_data_dir": "../dataset_files",
   "save_path_root": "results/antonym",
-  "seed": 42,
+  "seed": 0,
   "n_shots": 10,
   "n_trials": 5,
   "test_split": 0.3,
-  "device": "cpu",
-  "mean_activations_path": "results/antonym/antonym_mean_head_activations.pt",
+  "device": "cuda",
+  "mean_activations_path": "/mnt/ebs/my_fv_project/results/antonym/antonym_mean_head_activations_FIXED.pt",
   "last_token_only": true,
   "prefixes": {
     "input": "Q:",
@@ -21,6 +21,6 @@
     "instructions": ""
   },
   "revision": null,
-  "fixed_trials_path": "/Users/soonsikham/Desktop/my_fv_project/datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json",
+  "fixed_trials_path": "/mnt/ebs/my_fv_project/datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0_llama31_8b.json",
   "fixed_out_dir": null
 }

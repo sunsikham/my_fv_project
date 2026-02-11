@@ -1,0 +1,67 @@
+{
+  "dataset_name": "antonym",
+  "fixed_trials_id": "fixed_trials_antonym_t10_s10_seed0_llama31_8b",
+  "model_name": "/mnt/ebs/.hf_cache/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b",
+  "device": "cuda",
+  "seed": 0,
+  "checked_trials": 5,
+  "edit_layer": 9,
+  "n_top_heads": 10,
+  "token_class_idx": -1,
+  "top_heads": [
+    [
+      15,
+      17,
+      0.0412
+    ],
+    [
+      13,
+      27,
+      0.0384
+    ],
+    [
+      16,
+      29,
+      0.0257
+    ],
+    [
+      13,
+      31,
+      0.0093
+    ],
+    [
+      15,
+      1,
+      0.0091
+    ],
+    [
+      15,
+      19,
+      0.0091
+    ],
+    [
+      15,
+      16,
+      0.0072
+    ],
+    [
+      16,
+      28,
+      0.0069
+    ],
+    [
+      13,
+      22,
+      0.0056
+    ],
+    [
+      10,
+      5,
+      0.0056
+    ]
+  ],
+  "mismatch_count": 0,
+  "max_abs_diff_clean_logits": 0.0,
+  "max_abs_diff_with_logits": 0.0,
+  "trials_csv": "/mnt/ebs/my_fv_project/results_fv/antonym/fixed_trials_antonym_t10_s10_seed0_llama31_8b/injection_parity_trials.csv"
+}
