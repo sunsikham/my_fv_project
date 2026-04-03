@@ -36,6 +36,9 @@ _hf_cache/
 !.agents/skills/**/SKILL.md
 !.agents/skills/**/agents/
 !.agents/skills/**/agents/openai.yaml
+!.agents/skills/**/assets/
+!.agents/skills/**/assets/**/
+!.agents/skills/**/assets/**/*.md
 
 .codex/*
 !.codex/agents/

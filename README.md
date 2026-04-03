@@ -57,6 +57,12 @@ See:
 - `docs/brain/ops/environments.md`
 - `docs/brain/ops/runbook_index.md`
 
+## Repo-Local Codex Skills
+
+- repo-local skills live under `.agents/skills/`
+- repo-local subagent definitions live under `.codex/agents/`
+- clone or pull this repo on a new server to keep those custom Codex assets in sync
+
 ## Common Entry Points
 
 ### Parity

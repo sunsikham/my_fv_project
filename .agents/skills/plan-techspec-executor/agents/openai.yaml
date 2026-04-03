@@ -1,0 +1,7 @@
+interface:
+  display_name: "Plan-Tech Spec Executor"
+  short_description: "Two-stage approval workflow for execution"
+  default_prompt: "Use $plan-techspec-executor to create a plan, draft a tech spec, wait for my approvals, and then execute with my chosen runtime settings."
+
+policy:
+  allow_implicit_invocation: false
