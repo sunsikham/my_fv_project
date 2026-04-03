@@ -28,3 +28,21 @@ _hf_cache/
 *.pt
 *.pth
 *.safetensors
+
+# Local agent/tool state
+.agents/
+.codex/
+
+# Large experiment outputs stay scratch/rsync-managed
+results_fv/relation_condition_qwise/
+pt_analysis/
+bd_shuffle_q1_report_assets/
+bd_shuffle_q1_report.html
+ccn/ccn_extended_abstract_storypack_20260328/
+
+# Local notes and binary docs not needed for code sync
+docs/archive/
+docs/meeting_txt/
+docs/*.pdf
+3:19 meeting.pptx
+Triangle Inequality List (9).pdf

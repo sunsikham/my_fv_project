@@ -18,7 +18,7 @@ Q3,kangaroo,grassland
 Q3,cow,shed
 Q3,chicken,coop
 Q3,bird,cage
-Q3,goldfish,bow
+Q3,goldfish,bowl
 Q4,nurse,patient
 Q4,caregiver,client
 Q4,pet sitter,pet
@@ -35,7 +35,7 @@ Q5,virus,antibody
 Q5,fatigue,rest
 Q5,fact,rumor
 Q5,attack,defense
-Q5,fire,firefighter
+Q5,joy,sorrow
 Q5,heat,cold
 Q5,noise,silence
 Q5,drought,rain
@@ -46,7 +46,6 @@ Q6,hand,finger
 Q6,ear,lobes
 Q6,turtle,shell
 Q6,finger,nail
-Q6,bird,beak
 Q6,elephant,trunk
 Q6,lion,mane
 Q7,glove,hand
@@ -73,7 +72,6 @@ Q8,horse,hay
 Q8,sheep,clover
 Q8,baby,milk
 Q8,vegetarian,vegetable
-Q8,human,cheese
 Q9,grape,wine
 Q9,cocoa bean,chocolate
 Q9,coffee bean,coffee
@@ -91,13 +89,12 @@ Q10,frog,pond
 Q10,monkey,rainforest
 Q10,owl,forest
 Q10,kangaroo,grassland
-Q10,dog,kennel
 Q10,cow,shed
 Q10,horse,stable
 Q10,chicken,coop
 Q10,bird,cage
-Q10,goldfish,bow
-Q11,horn,deer
+Q10,goldfish,bowl
+Q11,mane,lion
 Q11,trunk,elephant
 Q11,hump,camel
 Q11,stinger,bee
@@ -119,7 +116,7 @@ Q12,cow,shed
 Q12,horse,stable
 Q12,chicken,coop
 Q12,bird,cage
-Q12,goldfish,bow
+Q12,goldfish,bowl
 Q13,tadpole,frog
 Q13,foal,horse
 Q13,kitten,cat
@@ -139,8 +136,8 @@ Q14,buckle,belt
 Q14,button,shirt
 Q14,velcro,shoe
 Q14,remote,gate
-Q14,button,elevator
-Q16,gloves,hand
+Q14,key,lock
+Q16,gloves,hands
 Q16,hat,head
 Q16,glasses,eyes
 Q16,mask,face

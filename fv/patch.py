@@ -232,7 +232,13 @@ def make_out_proj_head_output_overrider(
         base_x_heads = x_heads.clone() if debug_capture else None
         current_mode = state.get("mode")
         current_replace = state.get("replace_vec")
-        base_vec = x_heads[:, t_idx, head_idx, :]
+        current_head_idx = head_idx
+        if state is not None and state.get("head_idx") is not None:
+            current_head_idx = int(state.get("head_idx"))
+        if current_head_idx < 0 or current_head_idx >= n_heads:
+            raise ValueError("head_idx out of range")
+
+        base_vec = x_heads[:, t_idx, current_head_idx, :]
         if current_mode == "self":
             vec = base_vec
         elif current_mode == "replace":
@@ -249,7 +255,7 @@ def make_out_proj_head_output_overrider(
         else:
             raise ValueError("mode must be 'replace' or 'self'")
 
-        x_heads[:, t_idx, head_idx, :] = vec
+        x_heads[:, t_idx, current_head_idx, :] = vec
         if debug_capture and state is not None and base_x_heads is not None:
             def _summarize(tensor):
                 tensor_f = tensor.float()
@@ -258,8 +264,8 @@ def make_out_proj_head_output_overrider(
                     "norm": float(tensor_f.norm().item()),
                 }
 
-            target_before = base_x_heads[:, t_idx, head_idx, :]
-            target_after = x_heads[:, t_idx, head_idx, :]
+            target_before = base_x_heads[:, t_idx, current_head_idx, :]
+            target_after = x_heads[:, t_idx, current_head_idx, :]
             stats = {
                 "mode": current_mode,
                 "target_before": _summarize(target_before),
@@ -275,7 +281,7 @@ def make_out_proj_head_output_overrider(
 
             if n_heads > 1:
                 other_head_mask = (
-                    torch.arange(n_heads, device=x_heads.device) != head_idx
+                    torch.arange(n_heads, device=x_heads.device) != current_head_idx
                 )
                 other_before = base_x_heads[:, t_idx, other_head_mask, :]
                 other_after = x_heads[:, t_idx, other_head_mask, :]
@@ -286,8 +292,8 @@ def make_out_proj_head_output_overrider(
                 other_token_mask = (
                     torch.arange(seq_len, device=x_heads.device) != t_idx
                 )
-                other_before = base_x_heads[:, other_token_mask, head_idx, :]
-                other_after = x_heads[:, other_token_mask, head_idx, :]
+                other_before = base_x_heads[:, other_token_mask, current_head_idx, :]
+                other_after = x_heads[:, other_token_mask, current_head_idx, :]
                 stats["other_tokens_diff_max"] = float(
                     (other_after - other_before).abs().max().item()
                 )

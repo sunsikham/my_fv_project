@@ -22,6 +22,21 @@ from fv.model_spec import get_model_spec
 from fv.tokenization import resolve_prompt_add_special_tokens
 
 
+def storage_metadata(
+    *,
+    canonical_root: str,
+    sync_root: str | None = None,
+    sync_mode: str = "none",
+    artifact_profile: str = "full",
+):
+    return {
+        "canonical_root": str(canonical_root),
+        "sync_root": (str(sync_root) if sync_root is not None else None),
+        "sync_mode": str(sync_mode),
+        "artifact_profile": str(artifact_profile),
+    }
+
+
 def make_logger(log_path: str):
     log_file = open(log_path, "w", encoding="utf-8")
 
@@ -447,6 +462,7 @@ def main() -> int:
                 "model": args.model,
                 "model_spec": args.model_spec,
                 "score_key": args.score_key,
+                **storage_metadata(canonical_root=artifacts_dir),
             },
             "heads": top_heads,
         },
@@ -614,6 +630,7 @@ def main() -> int:
             "run_id_stepD": args.run_id_stepD,
             "heads": top_heads,
             "token_position_rule": "t_idx = seq_len - 1 (last token of prefix)",
+            **storage_metadata(canonical_root=artifacts_dir),
         },
     )
     log(f"saved fv_global_resid metadata: {fv_global_meta_path}")
@@ -721,6 +738,7 @@ def main() -> int:
                 "seed": args.seed,
                 "seq_token_idx": -1,
                 "measure": "logit[target_id]",
+                **storage_metadata(canonical_root=artifacts_dir),
             },
             "per_layer": per_layer_summary,
             "overall": overall,

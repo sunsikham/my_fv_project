@@ -1,37 +1,114 @@
 # my_fv_project
 
+Function-vector research repository with four active workstreams:
+- `src` vs `fv` parity
+- relation q-wise runtime
+- condition q-wise runtime
+- PT / context-drift evaluation
+
+## Read First
+
+Current project-knowledge hub:
+- `docs/brain/INDEX.md`
+
+Use `docs/brain/` for:
+- current project structure
+- pipeline map
+- artifact storage rules
+- analysis-track map
+
+Use `docs/archive/` for:
+- historical plans
+- handoffs
+- old environment-specific specs
+
+## Active Roots
+
+- code root: `/home/sunsik/my_fv_project`
+- large artifact root: `/scratch/sunsik/my_fv_project`
+- model root: `/scratch/sunsik/models`
+
+Do not treat `/mnt/ebs` as an active root in current docs.
+
+## Code Layout
+
+- `src/`: reference implementation
+- `fv/`: current working implementation and experiment library
+- `scripts/`: runnable pipelines, checks, analysis, and reports
+- `datasets/`: fixed trials and relation inputs
+- `results/`: reference-side and legacy outputs
+- `results_fv/`: repo-visible FV outputs
+- `pt_analysis/`: repo-visible PT outputs
+
 ## Setup
+
+Minimal local setup:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run (examples)
+Project-specific GPU runs in this repo often use:
+- `/home/sunsik/.venvs/pt442`
+
+See:
+- `docs/brain/ops/environments.md`
+- `docs/brain/ops/runbook_index.md`
+
+## Common Entry Points
+
+### Parity
+
+Main docs:
+- `docs/brain/pipelines/parity.md`
+
+Main scripts:
+- `scripts/run_m1_golden_artifacts.py`
+- `scripts/run_parity_suite.py`
+
+### Relation Q-Wise
+
+Main docs:
+- `docs/brain/pipelines/relation_qwise.md`
+
+Main script:
+- `scripts/run_relation_qwise_pipeline.py`
+
+### Condition Q-Wise
+
+Main docs:
+- `docs/brain/pipelines/condition_qwise.md`
+
+Main script:
+- `scripts/run_condition_qwise_pipeline.py`
+
+### PT
+
+Main docs:
+- `docs/brain/pipelines/pt.md`
+
+Main runners:
+- `scripts/run_pt_llama70b.sh`
+- `scripts/run_pt_context_drift_llama70b.sh`
+- `scripts/run_pt_unified_drift_control_llama70b.sh`
+
+## Sanity Checks
+
+Useful quick checks:
+
 ```bash
 python scripts/smoke_test.py --model gpt2
-python scripts/hook_smoke_test.py --model gpt2 --block-index 0
-python scripts/run_step5_build_universal_fv.py --model gpt2 --layer 0 --n_trials 2 --heads 0:0
-python scripts/run_step6_fv_injection_eval.py --model gpt2 --layer 0 --fv_path runs/<run_id>/artifacts/step5/fv_gpt2_layer0_n2.pt
-python scripts/run_stepA_plumbing_inject_sanity.py --model gpt2 --layer 0 --head 0 --n_trials 3 --alpha 1.0 --run_id plumbing_001
-python scripts/run_stepB_make_corrupted_and_baseline.py --model gpt2 --n_trials 50 --n_icl_examples 2 --run_id corrupted_001
-python scripts/run_stepC_patch_sanity.py --model gpt2 --layer 0 --head 0 --n_trials 5 --mode self --run_id patch_sanity_001
-python scripts/run_stepD_aie_head_sweep.py --model gpt2 --layers 0 --heads all --n_trials 10 --n_icl_examples 3 --run_id aie_smoke_001
-python scripts/run_stepD_aie_head_sweep.py --model gpt2 --layers 0-11 --heads all --n_trials 20 --n_icl_examples 3 --run_id aie_gpt2_001
-python scripts/run_stepE_topk_fv_and_eval.py --run_id_stepD aie_smoke_001 --k 20 --model gpt2 --alpha 1.0 --n_eval_trials 20 --run_id stepE_smoke_001
+python scripts/smoke_resolve_spec_outproj.py --model gpt2 --model_spec gpt2 --layer 0 --device cpu --dtype fp32
+python scripts/verify_prompt_parity.py --fixed_trials_path datasets/fixed_trials/fixed_trials_antonym_t10_s10_seed0.json --max_trials 5 --model_name_for_tokenizer gpt2
 ```
 
-## Phase0 smoke (local CPU friendly)
-Use tiny LLaMA to pass Phase0 without LLaMA3 8B/70B weights.
-python scripts/smoke_resolve_spec_outproj.py --model gpt2 --model_spec gpt2 --layer 0 --device cpu --dtype fp32
-python scripts/smoke_resolve_spec_outproj.py --model hf-internal-testing/tiny-random-LlamaForCausalLM --model_spec llama3 --layer 0 --device cpu --dtype fp32
-(if resolve fails)
-python scripts/smoke_resolve_spec_outproj.py --model hf-internal-testing/tiny-random-LlamaForCausalLM --model_spec llama3_wrapped --layer 0 --device cpu --dtype fp32
-python scripts/smoke_resolve_spec_outproj.py --model gpt2 --model_spec gpt2 --layer 0 --device cpu --dtype fp32 --negative
-Success criteria:
-- resolve blocks/attn/out_proj logs are printed.
-- out_proj pre-hook runs; captured tensor shape is (B,S,H)-like and last dim H matches hidden_size.
-- In --negative mode, resolution must fail (script exits 0).
+## Practical Rule
 
-Runs default to `runs/<run_id>/artifacts` and `runs/<run_id>/logs` (override with `--out_dir`).
-To inspect outputs in a run: `python scripts/inspect_artifacts.py --run_id <run_id> step5/`
+If you are unsure where to start:
+
+1. open `docs/brain/INDEX.md`
+2. read `PROJECT_MAP.md`
+3. open the relevant pipeline doc
+4. only then open runbooks or archived plans

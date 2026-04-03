@@ -29,7 +29,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out_csv", required=True, help="Output CSV path")
     parser.add_argument("--n_boot", type=int, default=10000, help="Bootstrap iterations")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument("--qid", required=False, default=None, help="Optional q_id filter")
+    parser.add_argument(
+        "--qid",
+        required=False,
+        default=None,
+        help="Optional q_id or comma-separated q_id list",
+    )
     parser.add_argument(
         "--shot_list",
         required=False,
@@ -54,6 +59,20 @@ def _parse_shot_list(raw: str) -> List[int]:
         return []
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     return [int(p) for p in parts]
+
+
+def _parse_qid_list(raw: str | None) -> List[str]:
+    if raw is None:
+        return []
+    out: List[str] = []
+    seen = set()
+    for part in raw.split(","):
+        item = part.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
 
 
 def _load_rows(path: str) -> List[Dict[str, str]]:
@@ -89,10 +108,11 @@ def main() -> int:
     args = _parse_args()
     rng = np.random.default_rng(args.seed)
     shot_filter = set(_parse_shot_list(args.shot_list))
+    qid_filter = set(_parse_qid_list(args.qid))
 
     rows = _load_rows(args.in_csv)
-    if args.qid:
-        rows = [row for row in rows if row["q_id"] == args.qid]
+    if qid_filter:
+        rows = [row for row in rows if row["q_id"] in qid_filter]
     if shot_filter:
         rows = [row for row in rows if int(row["shot"]) in shot_filter]
 

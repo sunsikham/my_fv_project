@@ -1,0 +1,56 @@
+{
+  "feature_alignments": {
+    "g0": {
+      "align_B": 0.22732976078987122,
+      "align_D": 0.43764713406562805
+    },
+    "g1": {
+      "align_B": 0.07112160325050354,
+      "align_D": -0.40519583225250244
+    },
+    "g2": {
+      "align_B": 0.7565839290618896,
+      "align_D": 0.5995133519172668
+    },
+    "g3": {
+      "align_B": 0.35773593187332153,
+      "align_D": -0.37556877732276917
+    },
+    "g4": {
+      "align_B": 0.4928175210952759,
+      "align_D": 0.3792268633842468
+    }
+  },
+  "T_B_mean": [
+    0.36467745900154114,
+    0.8384440541267395,
+    0.8903264403343201,
+    1.00166916847229,
+    1.3169883489608765
+  ],
+  "T_D_mean": [
+    0.0006446100887842476,
+    0.3751560151576996,
+    0.27763086557388306,
+    0.747944712638855,
+    1.018169641494751
+  ],
+  "PR_B_mean": [
+    2.7723469734191895,
+    2.953032970428467,
+    2.86100697517395,
+    2.757721185684204,
+    2.7259764671325684
+  ],
+  "PR_D_mean": [
+    3.4204297065734863,
+    3.4159679412841797,
+    3.1590707302093506,
+    3.3474576473236084,
+    3.5658555030822754
+  ],
+  "feature_change_png": "/home/sunsik/my_fv_project/docs/multi_feature_reweighting/slides/q1_inside_a_feature_mechanism/q1_inside_a_feature_changes.png",
+  "feature_contribution_bab_png": "/home/sunsik/my_fv_project/docs/multi_feature_reweighting/slides/q1_inside_a_feature_mechanism/q1_inside_a_feature_contributions_bab.png",
+  "feature_contribution_dad_png": "/home/sunsik/my_fv_project/docs/multi_feature_reweighting/slides/q1_inside_a_feature_mechanism/q1_inside_a_feature_contributions_dad.png",
+  "pptx": "/home/sunsik/my_fv_project/docs/multi_feature_reweighting/slides/q1_inside_a_feature_mechanism/q1_inside_a_feature_mechanism.pptx"
+}

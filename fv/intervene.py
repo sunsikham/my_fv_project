@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from baukit import TraceDict
-
 
 def make_residual_injection_hook(state):
     def inject_hook(_module, _inputs, output):
@@ -97,6 +95,14 @@ def function_vector_intervention(
     generate_str: bool = False,
 ) -> Tuple:
     """Src-compatible clean/intervention forward for FV injection parity."""
+    try:
+        from baukit import TraceDict
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "baukit is required for intervention tracing; "
+            "install baukit to use function_vector_intervention."
+        ) from exc
+
     device = model.device
     inputs = tokenizer(sentence, return_tensors="pt").to(device)
     original_pred_idx = len(inputs.input_ids.squeeze()) - 1

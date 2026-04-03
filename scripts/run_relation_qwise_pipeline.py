@@ -57,6 +57,21 @@ def read_json(path: Path) -> Dict[str, object]:
         return json.load(handle)
 
 
+def storage_metadata(
+    *,
+    canonical_root: Path,
+    sync_root: Optional[Path],
+    sync_mode: str,
+    artifact_profile: str,
+) -> Dict[str, object]:
+    return {
+        "canonical_root": str(canonical_root),
+        "sync_root": (str(sync_root) if sync_root is not None else None),
+        "sync_mode": str(sync_mode),
+        "artifact_profile": str(artifact_profile),
+    }
+
+
 def command_str(cmd: Sequence[str]) -> str:
     return " ".join(shlex.quote(str(part)) for part in cmd)
 
@@ -382,6 +397,8 @@ def main() -> int:
 
     out_root = resolve_path(args.out_root) / relation_name
     out_root.mkdir(parents=True, exist_ok=True)
+    root_status_dir = out_root / "_status"
+    root_status_dir.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH", "")
@@ -393,6 +410,37 @@ def main() -> int:
         print("No q_id selected.")
         return 1
 
+    write_json(
+        root_status_dir / "run_meta.json",
+        {
+            "created_at": utc_now(),
+            "relation_name": relation_name,
+            "relation_csv_path": str(relation_csv),
+            "n_selected_qids": len(q_ids),
+            "model": args.model,
+            "model_spec": args.model_spec,
+            "device": args.device,
+            "dtype": args.dtype,
+            "quant": args.quant,
+            "device_map": args.device_map,
+            "topk": args.topk,
+            "score_key": args.score_key,
+            "alpha": args.alpha,
+            "n_eval": args.n_eval,
+            "n_trials_per_q": args.n_trials_per_q,
+            "n_demos": args.n_demos,
+            "python_bin": args.python_bin,
+            "dry_run": bool(args.dry_run),
+            "out_root": str(out_root),
+            **storage_metadata(
+                canonical_root=out_root,
+                sync_root=None,
+                sync_mode="none",
+                artifact_profile="full",
+            ),
+        },
+    )
+
     orchestrator_log = out_root / "qwise_orchestrator.log"
     with orchestrator_log.open("a", encoding="utf-8") as main_log:
         main_log.write(f"[{utc_now()}] start relation={relation_name} n_q={len(q_ids)}\n")
@@ -400,6 +448,27 @@ def main() -> int:
     processed = 0
     failed_q: List[str] = []
     skipped_q: List[str] = []
+
+    def write_run_summary(status_value: str) -> None:
+        write_json(
+            root_status_dir / "run_summary.json",
+            {
+                "updated_at": utc_now(),
+                "status": status_value,
+                "relation_name": relation_name,
+                "n_selected_qids": len(q_ids),
+                "processed": processed,
+                "skipped_q_ids": sorted(set(skipped_q)),
+                "failed_q_ids": sorted(set(failed_q)),
+                "out_root": str(out_root),
+                **storage_metadata(
+                    canonical_root=out_root,
+                    sync_root=None,
+                    sync_mode="none",
+                    artifact_profile="full",
+                ),
+            },
+        )
 
     for q_id in q_ids:
         processed += 1
@@ -437,6 +506,15 @@ def main() -> int:
             "seed": args.seed,
         }
         status["q_row_count"] = q_count
+        status["q_root"] = str(run_base)
+        status.update(
+            storage_metadata(
+                canonical_root=run_base,
+                sync_root=None,
+                sync_mode="none",
+                artifact_profile="full",
+            )
+        )
         write_json(status_path, status)
 
         if q_count < min_required:
@@ -664,7 +742,17 @@ def main() -> int:
             failed_q.append(q_id)
             if args.stop_on_error:
                 print(f"[ERROR] q_id={q_id}: {exc}")
+                write_run_summary("failed")
                 return 1
+
+    if failed_q:
+        write_run_summary("failed")
+    elif skipped_q and processed == len(skipped_q):
+        write_run_summary("skipped")
+    elif args.dry_run:
+        write_run_summary("dry_run")
+    else:
+        write_run_summary("completed")
 
     print(f"processed_q={processed} skipped_q={len(skipped_q)} failed_q={len(set(failed_q))}")
     if failed_q:

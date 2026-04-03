@@ -23,6 +23,21 @@ from fv.adapters import infer_head_dims, resolve_blocks
 from fv.tokenization import resolve_prompt_add_special_tokens
 
 
+def storage_metadata(
+    *,
+    canonical_root: str,
+    sync_root: str | None = None,
+    sync_mode: str = "none",
+    artifact_profile: str = "full",
+):
+    return {
+        "canonical_root": str(canonical_root),
+        "sync_root": (str(sync_root) if sync_root is not None else None),
+        "sync_mode": str(sync_mode),
+        "artifact_profile": str(artifact_profile),
+    }
+
+
 def summarize_prompt(prompt: str, limit: int = 80) -> str:
     if len(prompt) <= limit:
         return prompt
@@ -1197,6 +1212,7 @@ def main() -> int:
         "fv": {"shape": list(fv.shape), "norm": fv_norm},
         "fv_meta": fv_meta,
         "timestamp": datetime.utcnow().isoformat() + "Z",
+        **storage_metadata(canonical_root=out_dir),
     }
 
     payload = {

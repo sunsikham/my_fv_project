@@ -52,6 +52,24 @@ def _parse_args() -> argparse.Namespace:
         help="p-value display mode",
     )
     parser.add_argument(
+        "--yscale",
+        choices=["linear", "log"],
+        default="linear",
+        help="Y-axis scale (default: linear)",
+    )
+    parser.add_argument(
+        "--ymin",
+        type=float,
+        default=None,
+        help="Optional y-axis lower bound",
+    )
+    parser.add_argument(
+        "--ymax",
+        type=float,
+        default=None,
+        help="Optional y-axis upper bound",
+    )
+    parser.add_argument(
         "--p_mode",
         choices=["tail"],
         default="tail",
@@ -75,7 +93,7 @@ def _load_rows(path: str) -> List[Dict[str, str]]:
 
 def _parse_qids(args: argparse.Namespace) -> Optional[Sequence[str]]:
     if args.qid:
-        return [args.qid]
+        return [q.strip() for q in args.qid.split(",") if q.strip()]
     if args.qids:
         return [q.strip() for q in args.qids.split(",") if q.strip()]
     return None
@@ -113,6 +131,9 @@ def _plot_panel(
     ax,
     rows: List[Dict[str, str]],
     show_p: str,
+    yscale: str,
+    ymin: Optional[float],
+    ymax: Optional[float],
 ):
     rows_sorted = sorted(rows, key=lambda r: int(r["shot"]))
     shots = [int(r["shot"]) for r in rows_sorted]
@@ -125,7 +146,7 @@ def _plot_panel(
     abd_hi = [_safe_float(r, "pt_abd_ci2_high") for r in rows_sorted]
 
     abc_line = ax.plot(shots, abc_mean, marker="o", label="ABC")[0]
-    abd_line = ax.plot(shots, abd_mean, marker="o", label="ABD")[0]
+    abd_line = ax.plot(shots, abd_mean, marker="s", label="ABD")[0]
 
     # error bars if CI2 available
     if all(v is not None for v in abc_lo + abc_hi):
@@ -158,6 +179,9 @@ def _plot_panel(
     ax.axhline(1.0, linestyle="--", color="gray", linewidth=1)
     ax.set_xlabel("shot")
     ax.set_ylabel("PT")
+    ax.set_yscale(yscale)
+    if ymin is not None or ymax is not None:
+        ax.set_ylim(bottom=ymin, top=ymax)
 
     if show_p != "none":
         for i, row in enumerate(rows_sorted):
@@ -196,7 +220,10 @@ def main() -> int:
         raise ValueError("No rows to plot after filtering")
 
     grouped = _group_rows(rows)
-    qids = sorted(grouped.keys())
+    if qid_filter is not None:
+        qids = [q_id for q_id in qid_filter if q_id in grouped]
+    else:
+        qids = sorted(grouped.keys())
 
     n = len(qids)
     max_cols = max(1, args.max_cols)
@@ -210,7 +237,14 @@ def main() -> int:
         axes = axes.flatten()
 
     for ax, q_id in zip(axes, qids):
-        _plot_panel(ax, grouped[q_id], args.show_p)
+        _plot_panel(
+            ax,
+            grouped[q_id],
+            args.show_p,
+            args.yscale,
+            args.ymin,
+            args.ymax,
+        )
         ax.set_title(q_id)
 
     for ax in axes[len(qids) :]:

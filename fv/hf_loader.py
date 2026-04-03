@@ -79,7 +79,7 @@ def load_hf_model_and_tokenizer(
     """
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     except Exception as exc:  # pragma: no cover - runtime import check
         raise RuntimeError(f"Failed to import transformers/torch: {exc}") from exc
 
@@ -88,6 +88,10 @@ def load_hf_model_and_tokenizer(
     _require_bitsandbytes(resolved_quant)
 
     resolved_device_map = device_map
+    # For quantized loading, avoid downstream model.to(...) paths by defaulting
+    # to HF dispatch on the first available CUDA device.
+    if resolved_quant in {"4bit", "8bit"} and resolved_device_map is None:
+        resolved_device_map = "auto"
     torch_dtype = _dtype_to_torch(resolved_dtype, torch)
 
     load_kwargs = {"trust_remote_code": trust_remote_code}

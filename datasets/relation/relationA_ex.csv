@@ -44,7 +44,7 @@ Q5,defense,prosecution
 Q5,washer,dryer
 Q6,feet,human
 Q6,fish,fin
-Q6,runne,leg
+Q6,runner,leg
 Q6,horse,hoof
 Q6,swimmer,arm
 Q6,dog,paw
@@ -63,7 +63,7 @@ Q7,smartwatch,wrist
 Q7,inhaler,mouth
 Q7,oxygen mask,face
 Q7,heat patch,back
-Q8,cat,mice
+Q8,cat,mouse
 Q8,fox,rabbit
 Q8,lion,zebra
 Q8,wolf,sheep
@@ -133,20 +133,20 @@ Q16,epaulette,shoulder
 Q16,wig,head
 Q16,turban,hair
 Q16,hood,head
-Q16,cap,bottle
+Q16,cap,head
 Q16,lens,eye
 Q16,phone case,phone
 Q16,mattress,bed
 Q17,comb,hair
 Q17,broom,dustpan
-Q17,mascara wand,eyelashes
+Q17,toothbrush,teeth
 Q17,pitchfork,hay
-Q17,zen rake,sand
-Q17,bore brush,gun barrel
-Q17,curry comb,horse
+Q17,sponge,dish
+Q17,scrubber,tile
+Q17,duster,furniture
 Q17,paintbrush,canvas
-Q17,windshield wipers,glass
-Q17,nail polish brush,nail
+Q17,loofah,body
+Q17,mop,floor
 Q18,spider,insect
 Q18,frog,fly
 Q18,bear,salmon

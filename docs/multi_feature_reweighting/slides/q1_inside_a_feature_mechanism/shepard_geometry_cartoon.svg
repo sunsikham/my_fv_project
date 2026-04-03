@@ -1,0 +1,31 @@
+<svg viewBox="0 0 560 360" width="560" height="360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#2F6BDA"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#D9893D"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="560" height="360" fill="#f8fafc"/>
+
+  <line x1="90" y1="300" x2="500" y2="300" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="90" y1="300" x2="90" y2="55" stroke="#94a3b8" stroke-width="2"/>
+  <text x="503" y="306" font-size="16" fill="#64748b">state dim 1</text>
+  <text x="40" y="62" font-size="16" fill="#64748b">state dim 2</text>
+
+  <line x1="152" y1="248" x2="350" y2="126" stroke="#2F6BDA" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="152" y1="248" x2="386" y2="264" stroke="#D9893D" stroke-width="4" marker-end="url(#arrowOrange)"/>
+
+  <circle cx="150" cy="250" r="16" fill="#64748b"/>
+  <circle cx="362" cy="118" r="16" fill="#2F6BDA"/>
+  <circle cx="400" cy="265" r="16" fill="#D9893D"/>
+
+  <text x="142" y="255" font-size="20" font-weight="700" fill="#ffffff">A</text>
+  <text x="354" y="123" font-size="20" font-weight="700" fill="#ffffff">B</text>
+  <text x="392" y="270" font-size="20" font-weight="700" fill="#ffffff">D</text>
+
+  <text x="243" y="166" font-size="18" font-weight="700" fill="#2F6BDA">A → B</text>
+  <text x="246" y="288" font-size="18" font-weight="700" fill="#D9893D">A → D</text>
+</svg>

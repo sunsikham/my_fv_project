@@ -8,6 +8,7 @@ import random
 import statistics
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,22 @@ from fv.slots import (
 )
 from fv.mean_activations import paper_labels_to_slot_map
 from fv.relation_trials import generate_relation_trials, save_trials_json
+from fv.stepd_resume import compute_stepd_code_fingerprint, stable_hash_hex
+
+
+def storage_metadata(
+    *,
+    canonical_root: str,
+    sync_root: str | None = None,
+    sync_mode: str = "none",
+    artifact_profile: str = "full",
+):
+    return {
+        "canonical_root": str(canonical_root),
+        "sync_root": (str(sync_root) if sync_root is not None else None),
+        "sync_mode": str(sync_mode),
+        "artifact_profile": str(artifact_profile),
+    }
 
 
 def make_logger(log_path: str):
@@ -110,6 +127,317 @@ def mean_abs(values):
     if not values:
         return 0.0
     return sum(abs(value) for value in values) / len(values)
+
+
+def _mean_vec_for_head(mean_acts, layer: int, head: int, slot_q: int):
+    if hasattr(mean_acts, "dim") and mean_acts.dim() == 4:
+        return mean_acts[layer, head, slot_q]
+    return mean_acts[layer, head]
+
+
+def _build_stepd_input_fingerprint(fixed_trials) -> str:
+    return stable_hash_hex(fixed_trials)
+
+
+def _build_stepd_resume_fingerprint(args, fixed_trials, *, layers, heads) -> str:
+    return stable_hash_hex(
+        {
+            "mode": "relation_qid" if args.relation_csv_path else "single",
+            "model": args.model,
+            "model_spec": args.model_spec,
+            "dtype": args.dtype,
+            "quant": args.quant,
+            "device_map": args.device_map,
+            "layers": list(layers),
+            "heads": list(heads),
+            "n_trials": int(args.n_trials),
+            "n_icl_examples": int(args.n_icl_examples),
+            "n_mean_trials": int(args.n_mean_trials),
+            "score_key": args.score_key,
+            "seed": int(args.seed),
+            "successful_icl_only": int(args.successful_icl_only),
+            "shuffle_labels": int(args.shuffle_labels),
+            "compute_prob_scores": int(args.compute_prob_scores),
+            "baseline_recompute_outproj": True,
+            "input_fingerprint": _build_stepd_input_fingerprint(fixed_trials),
+            "code_fingerprint": compute_stepd_code_fingerprint(PROJECT_ROOT),
+        }
+    )
+
+
+def _resume_paths(artifacts_dir: str) -> dict:
+    resume_dir = os.path.join(artifacts_dir, "_resume")
+    return {
+        "dir": resume_dir,
+        "state": os.path.join(resume_dir, "resume_state.json"),
+        "scores": os.path.join(resume_dir, "aie_scores.resume.jsonl"),
+        "trial_metrics": os.path.join(resume_dir, "trial_metrics.resume.jsonl"),
+        "dump": os.path.join(resume_dir, "dump_trial_metrics.resume.jsonl"),
+    }
+
+
+def _ensure_resume_root_state(*, artifacts_dir: str, resume_fingerprint: str, log) -> dict:
+    from fv.io import load_json
+
+    paths = _resume_paths(artifacts_dir)
+    os.makedirs(paths["dir"], exist_ok=True)
+    state = load_json(paths["state"]) if os.path.exists(paths["state"]) else None
+    if state is not None and state.get("resume_fingerprint") != resume_fingerprint:
+        for key in ("scores", "trial_metrics", "dump", "state"):
+            if os.path.exists(paths[key]):
+                os.remove(paths[key])
+        state = None
+        log("resume fingerprint mismatch: cleared prior _resume state")
+    if state is None:
+        save_json(
+            paths["state"],
+            {
+                "resume_fingerprint": resume_fingerprint,
+                "created_at": int(time.time()),
+            },
+        )
+    return paths
+
+
+def _jsonl_rows(path: str):
+    rows = []
+    if not os.path.exists(path):
+        return rows
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    return rows
+
+
+def _append_jsonl_rows(path: str, rows) -> None:
+    if not rows:
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=True, default=_json_safe) + "\n")
+        handle.flush()
+
+
+def _dedupe_rows(rows, key_fn):
+    out = {}
+    for row in rows:
+        out[key_fn(row)] = row
+    return list(out.values())
+
+
+def _score_row_key(row):
+    return (row.get("q_id"), int(row["layer"]), int(row["head"]))
+
+
+def _head_key(*, layer: int, head: int, q_id=None):
+    return (q_id, int(layer), int(head))
+
+
+def _trial_row_key(row):
+    return (
+        row.get("q_id"),
+        int(row["layer"]),
+        int(row["head"]),
+        int(row["trial_idx"]),
+    )
+
+
+def _filter_rows_for_q(rows, q_id=None):
+    if q_id is None:
+        return [row for row in rows if row.get("q_id") in (None, "__all__")]
+    return [row for row in rows if row.get("q_id") == q_id]
+
+
+def _completed_head_keys(rows):
+    return {_head_key(layer=int(row["layer"]), head=int(row["head"]), q_id=row.get("q_id")) for row in rows}
+
+
+def _build_score_row_from_trial_rows(
+    *,
+    trial_rows,
+    layer: int,
+    head: int,
+    n_trials_for_row: int,
+    mean_acts,
+    slot_q: int,
+    compute_prob_scores: bool,
+    q_id=None,
+):
+    metric_lists = _empty_metric_lists()
+    nonzero = False
+    for trial_row in trial_rows:
+        for key in metric_lists:
+            value = trial_row.get(key)
+            if value is not None:
+                metric_lists[key].append(float(value))
+        if compute_prob_scores and trial_row.get("delta_p") is not None:
+            if abs(float(trial_row["delta_p"])) > 1e-12:
+                nonzero = True
+    mean_vec = _mean_vec_for_head(mean_acts, layer=layer, head=head, slot_q=slot_q)
+    row = {
+        "layer": int(layer),
+        "head": int(head),
+        "n_trials": int(n_trials_for_row),
+        "mean_delta_p": mean(metric_lists["delta_p"]),
+        "std_delta_p": std(metric_lists["delta_p"]),
+        "mean_abs_delta_p": mean_abs(metric_lists["delta_p"]),
+        "mean_p_base": mean(metric_lists["p_base"]),
+        "std_p_base": std(metric_lists["p_base"]),
+        "mean_p_patch": mean(metric_lists["p_patch"]),
+        "std_p_patch": std(metric_lists["p_patch"]),
+        "mean_p_base_target": mean(metric_lists["p_base"]),
+        "mean_p_patch_target": mean(metric_lists["p_patch"]),
+        "mean_delta_p_target": mean(metric_lists["delta_p"]),
+        "mean_delta_logit": mean(metric_lists["delta_logit"]),
+        "std_delta_logit": std(metric_lists["delta_logit"]),
+        "mean_abs_delta_logit": mean_abs(metric_lists["delta_logit"]),
+        "mean_logit_base": mean(metric_lists["logit_base"]),
+        "mean_logit_patch": mean(metric_lists["logit_patch"]),
+        "mean_delta_logprob": mean(metric_lists["delta_logprob"]),
+        "std_delta_logprob": std(metric_lists["delta_logprob"]),
+        "mean_abs_delta_logprob": mean_abs(metric_lists["delta_logprob"]),
+        "mean_logprob_base": mean(metric_lists["logprob_base"]),
+        "mean_logprob_patch": mean(metric_lists["logprob_patch"]),
+        "any_nonzero": nonzero,
+        "mean_act_norm": mean_vec.norm().item(),
+        "clean_mean_norm": mean_vec.norm().item(),
+    }
+    if q_id is not None:
+        row["q_id"] = q_id
+    return row
+
+
+def _recover_legacy_completed_heads(
+    *,
+    legacy_trial_metrics_path: str,
+    q_id,
+    n_trials_for_row: int,
+    mean_acts,
+    slot_q: int,
+    compute_prob_scores: bool,
+):
+    rows = _filter_rows_for_q(_jsonl_rows(legacy_trial_metrics_path), q_id=q_id)
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[(int(row["layer"]), int(row["head"]))].append(row)
+    recovered_score_rows = []
+    recovered_trial_rows = []
+    for (layer, head), head_rows in sorted(grouped.items()):
+        deduped_head_rows = _dedupe_rows(head_rows, _trial_row_key)
+        unique_trial_ids = {int(row["trial_idx"]) for row in deduped_head_rows}
+        if len(unique_trial_ids) != int(n_trials_for_row):
+            continue
+        recovered_score_rows.append(
+            _build_score_row_from_trial_rows(
+                trial_rows=deduped_head_rows,
+                layer=layer,
+                head=head,
+                n_trials_for_row=n_trials_for_row,
+                mean_acts=mean_acts,
+                slot_q=slot_q,
+                compute_prob_scores=compute_prob_scores,
+                q_id=q_id,
+            )
+        )
+        recovered_trial_rows.extend(deduped_head_rows)
+    return recovered_score_rows, recovered_trial_rows
+
+
+def _prepare_resume_state(
+    *,
+    artifacts_dir: str,
+    resume_fingerprint: str,
+    q_id,
+    n_trials_for_row: int,
+    mean_acts,
+    slot_q: int,
+    compute_prob_scores: bool,
+    log,
+):
+    paths = _resume_paths(artifacts_dir)
+
+    score_rows = _dedupe_rows(_filter_rows_for_q(_jsonl_rows(paths["scores"]), q_id=q_id), _score_row_key)
+    trial_rows = _dedupe_rows(_filter_rows_for_q(_jsonl_rows(paths["trial_metrics"]), q_id=q_id), _trial_row_key)
+    if not score_rows:
+        legacy_trial_metrics_path = os.path.join(artifacts_dir, "trial_metrics.jsonl")
+        if os.path.exists(legacy_trial_metrics_path):
+            recovered_scores, recovered_trials = _recover_legacy_completed_heads(
+                legacy_trial_metrics_path=legacy_trial_metrics_path,
+                q_id=q_id,
+                n_trials_for_row=n_trials_for_row,
+                mean_acts=mean_acts,
+                slot_q=slot_q,
+                compute_prob_scores=compute_prob_scores,
+            )
+            if recovered_scores:
+                _append_jsonl_rows(paths["trial_metrics"], recovered_trials)
+                _append_jsonl_rows(paths["scores"], recovered_scores)
+                score_rows = _dedupe_rows(recovered_scores, _score_row_key)
+                trial_rows = _dedupe_rows(recovered_trials, _trial_row_key)
+                log(
+                    "recovered legacy StepD progress: "
+                    f"q_id={q_id if q_id is not None else '__all__'} "
+                    f"completed_heads={len(score_rows)}"
+                )
+    return {
+        "paths": paths,
+        "score_rows": score_rows,
+        "trial_rows": trial_rows,
+        "completed_head_keys": _completed_head_keys(score_rows),
+    }
+
+
+def _write_canonical_jsonl(path: str, rows) -> None:
+    with open(path, "w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=True, default=_json_safe) + "\n")
+
+
+def _materialize_final_outputs(
+    *,
+    artifacts_dir: str,
+    score_rows,
+    dump_final_path: str | None,
+    save_trials_enabled: bool,
+):
+    paths = _resume_paths(artifacts_dir)
+    completed_keys = _completed_head_keys(score_rows)
+    trial_rows = []
+    for row in _dedupe_rows(_jsonl_rows(paths["trial_metrics"]), _trial_row_key):
+        if _head_key(layer=int(row["layer"]), head=int(row["head"]), q_id=row.get("q_id")) in completed_keys:
+            trial_rows.append(row)
+    _write_canonical_jsonl(os.path.join(artifacts_dir, "trial_metrics.jsonl"), trial_rows)
+    if save_trials_enabled and trial_rows:
+        trial_fields = [
+            "trial_idx",
+            "layer",
+            "head",
+            "target_id",
+            "p_base",
+            "p_patch",
+            "delta_p",
+            "p_base_target",
+            "p_patch_target",
+            "delta_p_target",
+            "logit_base",
+            "logit_patch",
+            "delta_logit",
+            "logprob_base",
+            "logprob_patch",
+            "delta_logprob",
+        ]
+        aie_trials_rows = [{key: row.get(key) for key in trial_fields} for row in trial_rows]
+        save_csv(os.path.join(artifacts_dir, "aie_trials.csv"), aie_trials_rows)
+    if dump_final_path:
+        dump_rows = []
+        for row in _dedupe_rows(_jsonl_rows(paths["dump"]), _trial_row_key):
+            if _head_key(layer=int(row["layer"]), head=int(row["head"]), q_id=row.get("q_id")) in completed_keys:
+                dump_rows.append(row)
+        _write_canonical_jsonl(dump_final_path, dump_rows)
 
 
 DEFAULT_PREFIXES = {"input": "Q:", "output": "A:", "instructions": ""}
@@ -424,6 +752,556 @@ def compute_trial_metrics(logits_base, logits_patch, target_id, compute_prob_sco
         "delta_logprob": delta_logprob,
     }
 
+
+
+def _empty_metric_lists():
+    return {
+        "p_base": [],
+        "p_patch": [],
+        "delta_p": [],
+        "logit_base": [],
+        "logit_patch": [],
+        "delta_logit": [],
+        "logprob_base": [],
+        "logprob_patch": [],
+        "delta_logprob": [],
+    }
+
+
+def _prepare_trials_for_sweep(
+    trials,
+    tokenizer,
+    device,
+    tok_add_special: bool,
+    cache_tokenized_inputs: bool,
+):
+    prepared = []
+    tokenize_prefetch_calls = 0
+    for pos, trial in enumerate(trials):
+        prepared_trial = {
+            "pos": pos,
+            "trial": trial,
+            "prefix_str": trial["corrupted_prefix_str"],
+            "target_id": int(trial["target_id"]),
+            "seq_token_idx": int(trial["seq_token_idx"]),
+            "inputs": None,
+        }
+        if cache_tokenized_inputs:
+            inputs = tokenizer(
+                prepared_trial["prefix_str"],
+                return_tensors="pt",
+                add_special_tokens=tok_add_special,
+            )
+            inputs = {key: value.to(device) for key, value in inputs.items()}
+            prepared_trial["inputs"] = inputs
+            tokenize_prefetch_calls += 1
+        prepared.append(prepared_trial)
+    return prepared, {"tokenize_prefetch_calls": tokenize_prefetch_calls}
+
+
+def _run_aie_sweep_for_trials(
+    *,
+    args,
+    model,
+    tokenizer,
+    device,
+    tok_add_special: bool,
+    layer_modules,
+    layers,
+    heads,
+    trials,
+    mean_acts,
+    slot_q: int,
+    model_cfg,
+    resolved_quant,
+    baseline_recompute_outproj: bool,
+    log,
+    artifacts_dir: str,
+    trial_metrics_file,
+    progress_desc: str,
+    n_trials_for_row: int,
+    q_id=None,
+    save_trials_rows=None,
+    dump_handle=None,
+    dump_expected_keys=None,
+    log_patch_debug: bool = False,
+):
+    import torch
+
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = None
+
+    cache_inputs = bool(args.cache_tokenized_inputs)
+    persistent_hook = bool(args.persistent_layer_hook)
+    baseline_scope = args.baseline_cache_scope
+
+    prepared_trials, prep_stats = _prepare_trials_for_sweep(
+        trials=trials,
+        tokenizer=tokenizer,
+        device=device,
+        tok_add_special=tok_add_special,
+        cache_tokenized_inputs=cache_inputs,
+    )
+
+    pairs = [(layer, head) for layer in layers for head in heads]
+    total = len(pairs)
+    log_every = max(1, total // 100)
+    patch_token_logged = False
+    sweep_start = time.time()
+    resume_state = _prepare_resume_state(
+        artifacts_dir=artifacts_dir,
+        resume_fingerprint=args._resume_fingerprint,
+        q_id=q_id,
+        n_trials_for_row=n_trials_for_row,
+        mean_acts=mean_acts,
+        slot_q=slot_q,
+        compute_prob_scores=bool(args.compute_prob_scores),
+        log=log,
+    )
+    score_rows = list(resume_state["score_rows"])
+    completed_head_keys = set(resume_state["completed_head_keys"])
+    pair_idx = len(completed_head_keys)
+
+    perf_stats = {
+        "progress_desc": progress_desc,
+        "baseline_cache_scope": baseline_scope,
+        "cache_tokenized_inputs": cache_inputs,
+        "persistent_layer_hook": persistent_hook,
+        "n_layers": len(layers),
+        "n_heads": len(heads),
+        "n_trials": len(prepared_trials),
+        "pairs_total": total,
+        "tokenize_prefetch_calls": prep_stats["tokenize_prefetch_calls"],
+        "tokenize_runtime_calls": 0,
+        "baseline_forward_calls": 0,
+        "baseline_cache_hits": 0,
+        "patched_forward_calls": 0,
+    }
+
+    pbar = (
+        tqdm(total=total, desc=progress_desc, unit="head", initial=pair_idx)
+        if tqdm is not None
+        else None
+    )
+    global_baseline_cache = {} if baseline_scope == "trial" else None
+
+    for layer in layers:
+        remaining_heads = [
+            int(head)
+            for head in heads
+            if _head_key(layer=int(layer), head=int(head), q_id=q_id) not in completed_head_keys
+        ]
+        if not remaining_heads:
+            log(f"[StepD] layer={layer} fully satisfied by resume; skipping")
+            continue
+        layer_module = layer_modules[layer]
+        baseline_head_idx = int(remaining_heads[0])
+
+        layer_hook_state = None
+        layer_hook_handle = None
+        baseline_hook_state = None
+        baseline_hook = None
+
+        if persistent_hook:
+            layer_hook_state = {
+                "mode": "self",
+                "replace_vec": None,
+                "seq_token_idx": None,
+                "head_idx": baseline_head_idx,
+            }
+            layer_hook = make_out_proj_head_output_overrider(
+                layer_idx=layer,
+                head_idx=baseline_head_idx,
+                seq_token_idx=0,
+                mode="self",
+                replace_vec=None,
+                model_config=model_cfg,
+                resolved_quant=resolved_quant,
+                force_recompute_outproj=baseline_recompute_outproj,
+                state=layer_hook_state,
+                logger=log,
+            )
+            layer_hook_handle = layer_module.register_forward_hook(layer_hook)
+        else:
+            baseline_hook_state = {
+                "mode": "self",
+                "replace_vec": None,
+                "seq_token_idx": None,
+                "head_idx": baseline_head_idx,
+            }
+            baseline_hook = make_out_proj_head_output_overrider(
+                layer_idx=layer,
+                head_idx=baseline_head_idx,
+                seq_token_idx=0,
+                mode="self",
+                replace_vec=None,
+                model_config=model_cfg,
+                resolved_quant=resolved_quant,
+                force_recompute_outproj=baseline_recompute_outproj,
+                state=baseline_hook_state,
+                logger=log,
+            )
+
+        baseline_cache = (
+            global_baseline_cache if baseline_scope == "trial" else {}
+        )
+
+        for prepared in prepared_trials:
+            cache_key = int(prepared["pos"])
+            if cache_key in baseline_cache:
+                perf_stats["baseline_cache_hits"] += 1
+                continue
+
+            inputs = prepared["inputs"]
+            if inputs is None:
+                inputs = tokenizer(
+                    prepared["prefix_str"],
+                    return_tensors="pt",
+                    add_special_tokens=tok_add_special,
+                )
+                inputs = {key: value.to(device) for key, value in inputs.items()}
+                perf_stats["tokenize_runtime_calls"] += 1
+
+            seq_token_idx = prepared["seq_token_idx"]
+            if persistent_hook:
+                layer_hook_state["mode"] = "self"
+                layer_hook_state["replace_vec"] = None
+                layer_hook_state["seq_token_idx"] = seq_token_idx
+                layer_hook_state["head_idx"] = baseline_head_idx
+                with torch.inference_mode():
+                    outputs = model(**inputs)
+            else:
+                baseline_hook_state["mode"] = "self"
+                baseline_hook_state["replace_vec"] = None
+                baseline_hook_state["seq_token_idx"] = seq_token_idx
+                baseline_hook_state["head_idx"] = baseline_head_idx
+                handle = layer_module.register_forward_hook(baseline_hook)
+                with torch.inference_mode():
+                    outputs = model(**inputs)
+                handle.remove()
+
+            baseline_cache[cache_key] = outputs.logits[0, -1].detach()
+            perf_stats["baseline_forward_calls"] += 1
+
+        log(
+            "baseline cache ready: "
+            f"layer={layer} scope={baseline_scope} size={len(baseline_cache)}"
+        )
+
+        for head in remaining_heads:
+            pair_idx += 1
+            if pbar is not None:
+                if q_id is None:
+                    pbar.set_postfix(
+                        {"layer": layer, "head": head, "trials": len(prepared_trials)}
+                    )
+                else:
+                    pbar.set_postfix({"layer": layer, "head": head})
+            if pair_idx == 1 or pair_idx % log_every == 0 or pair_idx == total:
+                elapsed = time.time() - sweep_start
+                rate = pair_idx / elapsed if elapsed > 0 else 0.0
+                remaining = total - pair_idx
+                eta = remaining / rate if rate > 0 else 0.0
+                percent = (pair_idx / total) * 100 if total else 100.0
+                log(
+                    "[StepD] "
+                    f"{percent:.1f}% ({pair_idx}/{total}) "
+                    f"layer={layer} head={head} "
+                    f"elapsed={format_duration(elapsed)} "
+                    f"ETA={format_duration(eta)}"
+                )
+
+            metric_lists = _empty_metric_lists()
+            nonzero = False
+            replace_vec = _mean_vec_for_head(mean_acts, layer=layer, head=int(head), slot_q=slot_q)
+
+            patch_hook_state = None
+            patch_hook = None
+            if not persistent_hook:
+                patch_hook_state = {
+                    "mode": "replace",
+                    "replace_vec": None,
+                    "seq_token_idx": None,
+                    "head_idx": int(head),
+                }
+                patch_hook = make_out_proj_head_output_overrider(
+                    layer_idx=layer,
+                    head_idx=int(head),
+                    seq_token_idx=0,
+                    mode="replace",
+                    replace_vec=None,
+                    model_config=model_cfg,
+                    resolved_quant=resolved_quant,
+                    force_recompute_outproj=baseline_recompute_outproj,
+                    state=patch_hook_state,
+                    logger=log,
+                )
+
+            for prepared in prepared_trials:
+                trial = prepared["trial"]
+                prefix_str = prepared["prefix_str"]
+                target_id = prepared["target_id"]
+                seq_token_idx = prepared["seq_token_idx"]
+                cache_key = int(prepared["pos"])
+
+                inputs = prepared["inputs"]
+                if inputs is None:
+                    inputs = tokenizer(
+                        prefix_str,
+                        return_tensors="pt",
+                        add_special_tokens=tok_add_special,
+                    )
+                    inputs = {key: value.to(device) for key, value in inputs.items()}
+                    perf_stats["tokenize_runtime_calls"] += 1
+
+                baseline_logits = baseline_cache[cache_key]
+
+                if log_patch_debug and pair_idx == 1 and trial["trial_idx"] == 0:
+                    target_token = tokenizer.convert_ids_to_tokens(target_id)
+                    prompt_tail = repr(prefix_str[-20:])
+                    log(
+                        "target_debug: "
+                        f"prompt_tail={prompt_tail} "
+                        f"target_token={target_token} target_id={target_id}"
+                    )
+
+                if log_patch_debug and not patch_token_logged:
+                    prefix_ids = inputs["input_ids"][0].detach().cpu().tolist()
+                    full_ids = trial.get("full_input_ids", [])
+                    decoded_full = (
+                        tokenizer.decode([full_ids[seq_token_idx]])
+                        if full_ids
+                        else None
+                    )
+                    decoded_prefix = tokenizer.decode([prefix_ids[seq_token_idx]])
+                    log(
+                        "PATCH slot/seq idx decoded: "
+                        f"slot_idx={slot_q} seq_token_idx={seq_token_idx} "
+                        f"full_token={repr(decoded_full)} "
+                        f"prefix_token={repr(decoded_prefix)}"
+                    )
+                    patch_token_logged = True
+
+                if persistent_hook:
+                    layer_hook_state["mode"] = "replace"
+                    layer_hook_state["replace_vec"] = replace_vec
+                    layer_hook_state["seq_token_idx"] = seq_token_idx
+                    layer_hook_state["head_idx"] = int(head)
+                    with torch.inference_mode():
+                        outputs_patched = model(**inputs)
+                else:
+                    patch_hook_state["mode"] = "replace"
+                    patch_hook_state["replace_vec"] = replace_vec
+                    patch_hook_state["seq_token_idx"] = seq_token_idx
+                    patch_hook_state["head_idx"] = int(head)
+                    handle = layer_module.register_forward_hook(patch_hook)
+                    with torch.inference_mode():
+                        outputs_patched = model(**inputs)
+                    handle.remove()
+
+                perf_stats["patched_forward_calls"] += 1
+                patched_logits = outputs_patched.logits[0, -1]
+                trial_metrics = compute_trial_metrics(
+                    baseline_logits,
+                    patched_logits,
+                    target_id,
+                    compute_prob_scores=bool(args.compute_prob_scores),
+                )
+
+                if args.compute_prob_scores:
+                    metric_lists["p_base"].append(trial_metrics["p_base"])
+                    metric_lists["p_patch"].append(trial_metrics["p_patch"])
+                    metric_lists["delta_p"].append(trial_metrics["delta_p"])
+                    if abs(trial_metrics["delta_p"]) > 1e-12:
+                        nonzero = True
+                metric_lists["logit_base"].append(trial_metrics["logit_base"])
+                metric_lists["logit_patch"].append(trial_metrics["logit_patch"])
+                metric_lists["delta_logit"].append(trial_metrics["delta_logit"])
+                metric_lists["logprob_base"].append(trial_metrics["logprob_base"])
+                metric_lists["logprob_patch"].append(trial_metrics["logprob_patch"])
+                metric_lists["delta_logprob"].append(trial_metrics["delta_logprob"])
+
+                trial_row = {
+                    "trial_idx": trial["trial_idx"],
+                    "layer": layer,
+                    "head": head,
+                    "target_id": target_id,
+                    "target_token": tokenizer.convert_ids_to_tokens(target_id),
+                    "seed_global": args.seed,
+                    "shuffle_labels": bool(args.shuffle_labels),
+                    "shuffle_derangement": False,
+                    "n_icl_examples": args.n_icl_examples,
+                    "demo_perm": trial.get("demo_perm"),
+                    "demo_fixed_points": trial.get("demo_fixed_points"),
+                    "demo_outputs_before": trial.get("demo_outputs_before"),
+                    "demo_outputs_after": trial.get("demo_outputs_after"),
+                    "p_base": trial_metrics["p_base"],
+                    "p_patch": trial_metrics["p_patch"],
+                    "delta_p": trial_metrics["delta_p"],
+                    "p_base_target": trial_metrics["p_base"],
+                    "p_patch_target": trial_metrics["p_patch"],
+                    "delta_p_target": trial_metrics["delta_p"],
+                    "logit_base": trial_metrics["logit_base"],
+                    "logit_patch": trial_metrics["logit_patch"],
+                    "delta_logit": trial_metrics["delta_logit"],
+                    "logprob_base": trial_metrics["logprob_base"],
+                    "logprob_patch": trial_metrics["logprob_patch"],
+                    "delta_logprob": trial_metrics["delta_logprob"],
+                    "prompt_tail_repr": repr(prefix_str[-30:]),
+                    "prompt_ends_with_space": prefix_str.endswith(" "),
+                    "slot_idx": slot_q,
+                    "seq_token_idx": seq_token_idx,
+                }
+                if q_id is not None:
+                    trial_row["q_id"] = q_id
+                trial_metrics_file.write(
+                    json.dumps(trial_row, ensure_ascii=True, default=_json_safe) + "\n"
+                )
+
+                if dump_handle is not None:
+                    if (args.dump_layer is None or args.dump_layer == layer) and (
+                        args.dump_head is None or args.dump_head == head
+                    ):
+                        if args.dump_max_trials < 0 or trial["trial_idx"] < args.dump_max_trials:
+                            ids_list = inputs["input_ids"][0].detach().cpu().tolist()
+                            dump_row = {
+                                "trial_idx": trial["trial_idx"],
+                                "layer": layer,
+                                "head": head,
+                                "target_id": target_id,
+                                "target_token": tokenizer.convert_ids_to_tokens(target_id),
+                                "seed_global": args.seed,
+                                "n_icl_examples": args.n_icl_examples,
+                                "p_base": trial_metrics["p_base"],
+                                "p_patch": trial_metrics["p_patch"],
+                                "delta_p": trial_metrics["delta_p"],
+                                "p_base_target": trial_metrics["p_base"],
+                                "p_patch_target": trial_metrics["p_patch"],
+                                "delta_p_target": trial_metrics["delta_p"],
+                                "logit_base": trial_metrics["logit_base"],
+                                "logit_patch": trial_metrics["logit_patch"],
+                                "delta_logit": trial_metrics["delta_logit"],
+                                "logprob_base": trial_metrics["logprob_base"],
+                                "logprob_patch": trial_metrics["logprob_patch"],
+                                "delta_logprob": trial_metrics["delta_logprob"],
+                                "prompt_tail_repr": (
+                                    repr(prefix_str[-60:]) if args.dump_include_prompt else ""
+                                ),
+                                "prompt_ends_with_space": prefix_str.endswith(" "),
+                                "seq_token_idx": seq_token_idx,
+                                "ids_len": len(ids_list),
+                                "ids_last10": ids_list[-10:],
+                                "slot_idx": slot_q,
+                            }
+                            if set(dump_row.keys()) != set(dump_expected_keys):
+                                missing = set(dump_expected_keys) - set(dump_row.keys())
+                                extra = set(dump_row.keys()) - set(dump_expected_keys)
+                                raise ValueError(
+                                    f"dump keys mismatch missing={sorted(missing)} extra={sorted(extra)}"
+                                )
+                            dump_handle.write(
+                                json.dumps(dump_row, ensure_ascii=True, default=_json_safe)
+                                + "\n"
+                            )
+
+                if save_trials_rows is not None:
+                    save_trials_rows.append(
+                        {
+                            "trial_idx": trial["trial_idx"],
+                            "layer": layer,
+                            "head": head,
+                            "target_id": target_id,
+                            "p_base": trial_metrics["p_base"],
+                            "p_patch": trial_metrics["p_patch"],
+                            "delta_p": trial_metrics["delta_p"],
+                            "p_base_target": trial_metrics["p_base"],
+                            "p_patch_target": trial_metrics["p_patch"],
+                            "delta_p_target": trial_metrics["delta_p"],
+                            "logit_base": trial_metrics["logit_base"],
+                            "logit_patch": trial_metrics["logit_patch"],
+                            "delta_logit": trial_metrics["delta_logit"],
+                            "logprob_base": trial_metrics["logprob_base"],
+                            "logprob_patch": trial_metrics["logprob_patch"],
+                            "delta_logprob": trial_metrics["delta_logprob"],
+                        }
+                    )
+
+            mean_act_norm = _mean_vec_for_head(mean_acts, layer=layer, head=int(head), slot_q=slot_q).norm().item()
+            mean_delta_p = mean(metric_lists["delta_p"])
+            std_delta_p = std(metric_lists["delta_p"])
+            mean_abs_delta_p = mean_abs(metric_lists["delta_p"])
+            mean_p_base = mean(metric_lists["p_base"])
+            std_p_base = std(metric_lists["p_base"])
+            mean_p_patch = mean(metric_lists["p_patch"])
+            std_p_patch = std(metric_lists["p_patch"])
+            if args.compute_prob_scores and not (-1.000001 <= mean_delta_p <= 1.000001):
+                log(
+                    f"[WARN] mean_delta_p out of range: {mean_delta_p:.6f} "
+                    f"(layer={layer} head={head})"
+                )
+                assert -1.000001 <= mean_delta_p <= 1.000001
+
+            mean_delta_logit = mean(metric_lists["delta_logit"])
+            std_delta_logit = std(metric_lists["delta_logit"])
+            mean_abs_delta_logit = mean_abs(metric_lists["delta_logit"])
+            mean_logit_base = mean(metric_lists["logit_base"])
+            mean_logit_patch = mean(metric_lists["logit_patch"])
+
+            mean_delta_logprob = mean(metric_lists["delta_logprob"])
+            std_delta_logprob = std(metric_lists["delta_logprob"])
+            mean_abs_delta_logprob = mean_abs(metric_lists["delta_logprob"])
+            mean_logprob_base = mean(metric_lists["logprob_base"])
+            mean_logprob_patch = mean(metric_lists["logprob_patch"])
+
+            row = {
+                "layer": layer,
+                "head": head,
+                "n_trials": n_trials_for_row,
+                "mean_delta_p": mean_delta_p,
+                "std_delta_p": std_delta_p,
+                "mean_abs_delta_p": mean_abs_delta_p,
+                "mean_p_base": mean_p_base,
+                "std_p_base": std_p_base,
+                "mean_p_patch": mean_p_patch,
+                "std_p_patch": std_p_patch,
+                "mean_p_base_target": mean_p_base,
+                "mean_p_patch_target": mean_p_patch,
+                "mean_delta_p_target": mean_delta_p,
+                "mean_delta_logit": mean_delta_logit,
+                "std_delta_logit": std_delta_logit,
+                "mean_abs_delta_logit": mean_abs_delta_logit,
+                "mean_logit_base": mean_logit_base,
+                "mean_logit_patch": mean_logit_patch,
+                "mean_delta_logprob": mean_delta_logprob,
+                "std_delta_logprob": std_delta_logprob,
+                "mean_abs_delta_logprob": mean_abs_delta_logprob,
+                "mean_logprob_base": mean_logprob_base,
+                "mean_logprob_patch": mean_logprob_patch,
+                "any_nonzero": nonzero,
+                "mean_act_norm": mean_act_norm,
+                "clean_mean_norm": mean_act_norm,
+            }
+            if q_id is not None:
+                row["q_id"] = q_id
+            score_rows.append(row)
+            completed_head_keys.add(_head_key(layer=int(layer), head=int(head), q_id=q_id))
+            _append_jsonl_rows(resume_state["paths"]["scores"], [row])
+            if pbar is not None:
+                pbar.update(1)
+
+        if layer_hook_handle is not None:
+            layer_hook_handle.remove()
+
+    if pbar is not None:
+        pbar.close()
+
+    perf_stats["elapsed_sec"] = time.time() - sweep_start
+    perf_stats["sec_per_head"] = (
+        perf_stats["elapsed_sec"] / total if total > 0 else 0.0
+    )
+    return score_rows, perf_stats
 
 
 def format_duration(seconds: float) -> str:
@@ -782,6 +1660,33 @@ def main() -> int:
         help="Score key for ranking (default: mean_delta_p)",
     )
     parser.add_argument(
+        "--baseline_cache_scope",
+        choices=["layer_trial", "trial"],
+        default="layer_trial",
+        help="Baseline cache scope for StepD sweep (default: layer_trial)",
+    )
+    parser.add_argument(
+        "--cache_tokenized_inputs",
+        type=int,
+        choices=[0, 1],
+        default=1,
+        help="Cache tokenized trial inputs once per sweep (default: 1)",
+    )
+    parser.add_argument(
+        "--persistent_layer_hook",
+        type=int,
+        choices=[0, 1],
+        default=1,
+        help="Keep one hook per layer and update state per head/trial (default: 1)",
+    )
+    parser.add_argument(
+        "--perf_log",
+        type=int,
+        choices=[0, 1],
+        default=1,
+        help="Save StepD performance counters to artifacts/perf_stats.json (default: 1)",
+    )
+    parser.add_argument(
         "--debug_stepd",
         action="store_true",
         help="Run StepD parity debug on local gpt2 (cpu) and exit",
@@ -887,6 +1792,10 @@ def main() -> int:
     log(f"debug_prompt_check: {args.debug_prompt_check}")
     log(f"debug_n: {args.debug_n}")
     log(f"dump_trial_metrics_jsonl: {args.dump_trial_metrics_jsonl}")
+    log(f"baseline_cache_scope: {args.baseline_cache_scope}")
+    log(f"cache_tokenized_inputs: {args.cache_tokenized_inputs}")
+    log(f"persistent_layer_hook: {args.persistent_layer_hook}")
+    log(f"perf_log: {args.perf_log}")
 
     try:
         import torch
@@ -910,6 +1819,11 @@ def main() -> int:
     tok_add_special = bool(spec.prepend_bos)
     baseline_recompute_outproj = True
     log(f"tok_add_special: {tok_add_special}")
+    if args.baseline_cache_scope == "trial":
+        log(
+            "[WARN] baseline_cache_scope=trial can change numeric outputs; "
+            "use layer_trial for stable parity."
+        )
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -1196,6 +2110,18 @@ def main() -> int:
             log("Head index out of range")
             log_file.close()
             return 1
+
+    args._resume_fingerprint = _build_stepd_resume_fingerprint(
+        args,
+        fixed_trials,
+        layers=layers,
+        heads=heads,
+    )
+    resume_paths = _ensure_resume_root_state(
+        artifacts_dir=artifacts_dir,
+        resume_fingerprint=args._resume_fingerprint,
+        log=log,
+    )
 
     if args.debug_stepd:
         log("[StepD debug] running raw vs self parity check")
@@ -1914,6 +2840,7 @@ def main() -> int:
             "n_trials": len(sampled_trials_rows),
             "n_shots": args.n_icl_examples,
             "n_demos": args.n_icl_examples,
+            **storage_metadata(canonical_root=artifacts_dir),
         },
         "trials": sampled_trials_rows,
     }
@@ -1944,30 +2871,22 @@ def main() -> int:
                 return 1
             trials_by_qid.setdefault(q_id, []).append(trial)
 
-        trial_metrics_path = os.path.join(artifacts_dir, "trial_metrics.jsonl")
-        trial_metrics_file = open(trial_metrics_path, "w", encoding="utf-8")
+        trial_metrics_path = resume_paths["trial_metrics"]
+        trial_metrics_file = open(trial_metrics_path, "a", encoding="utf-8")
 
         cie_rows = []
         aie_accumulator = {}
         aie_counts = {}
         mean_acts_by_qid = {}
         slot_q_ref = None
-
+        perf_groups = {}
         log("starting AIE sweep (qid-specific mean activations)")
-        try:
-            from tqdm import tqdm
-        except ImportError:
-            tqdm = None
-
-        pairs = [(layer, head) for layer in layers for head in heads]
-        total = len(pairs)
-        log_every = max(1, total // 100)
 
         for q_id, q_trials in sorted(trials_by_qid.items()):
             log(f"[qid] computing mean_activations for {q_id} n_trials={len(q_trials)}")
             fixed_subset = {"trials": q_trials}
             try:
-                mean_acts, dummy_labels, slot_index_map = (
+                mean_acts, _dummy_labels, slot_index_map = (
                     compute_mean_activations_fixed_trials_ns(
                         model=model,
                         tokenizer=tokenizer,
@@ -2001,187 +2920,43 @@ def main() -> int:
                 trial_metrics_file.close()
                 return 1
 
-            pbar = (
-                tqdm(pairs, total=total, desc=f"StepD {q_id}", unit="head")
-                if tqdm is not None
-                else None
-            )
-            start_time = time.time()
-            for idx_pair, (layer, head) in enumerate(pairs, start=1):
-                if pbar is not None:
-                    pbar.set_postfix({"layer": layer, "head": head})
-                if idx_pair == 1 or idx_pair % log_every == 0 or idx_pair == total:
-                    elapsed = time.time() - start_time
-                    rate = idx_pair / elapsed if elapsed > 0 else 0.0
-                    remaining = total - idx_pair
-                    eta = remaining / rate if rate > 0 else 0.0
-                    percent = (idx_pair / total) * 100 if total else 100.0
-                    log(
-                        "[StepD] "
-                        f"{percent:.1f}% ({idx_pair}/{total}) "
-                        f"layer={layer} head={head} "
-                        f"elapsed={format_duration(elapsed)} "
-                        f"ETA={format_duration(eta)}"
-                    )
-
-                metric_lists = {
-                    "p_base": [],
-                    "p_patch": [],
-                    "delta_p": [],
-                    "logit_base": [],
-                    "logit_patch": [],
-                    "delta_logit": [],
-                    "logprob_base": [],
-                    "logprob_patch": [],
-                    "delta_logprob": [],
-                }
-                nonzero = False
-                replace_vec = mean_acts[layer, head, slot_q]
-                hook_state = {"mode": "self", "replace_vec": None, "seq_token_idx": None}
-                hook = make_out_proj_head_output_overrider(
-                    layer_idx=layer,
-                    head_idx=head,
-                    seq_token_idx=0,
-                    mode="self",
-                    replace_vec=None,
-                    model_config=model_cfg,
+            try:
+                q_rows, q_perf = _run_aie_sweep_for_trials(
+                    args=args,
+                    model=model,
+                    tokenizer=tokenizer,
+                    device=device,
+                    tok_add_special=tok_add_special,
+                    layer_modules=layer_modules,
+                    layers=layers,
+                    heads=heads,
+                    trials=q_trials,
+                    mean_acts=mean_acts,
+                    slot_q=int(slot_q),
+                    model_cfg=model_cfg,
                     resolved_quant=resolved_quant,
-                    force_recompute_outproj=baseline_recompute_outproj,
-                    state=hook_state,
-                    logger=log,
+                    baseline_recompute_outproj=baseline_recompute_outproj,
+                    log=log,
+                    artifacts_dir=artifacts_dir,
+                    trial_metrics_file=trial_metrics_file,
+                    progress_desc=f"StepD {q_id}",
+                    n_trials_for_row=len(q_trials),
+                    q_id=q_id,
+                    save_trials_rows=None,
+                    dump_handle=None,
+                    dump_expected_keys=None,
+                    log_patch_debug=False,
                 )
-                for trial in q_trials:
-                    prefix_str = trial["corrupted_prefix_str"]
-                    target_id = trial["target_id"]
-                    seq_token_idx = trial["seq_token_idx"]
-                    hook_state["seq_token_idx"] = seq_token_idx
+            except ValueError as exc:
+                log(str(exc))
+                log_file.close()
+                trial_metrics_file.close()
+                return 1
+            cie_rows.extend(q_rows)
+            perf_groups[q_id] = q_perf
 
-                    inputs = tokenizer(
-                        prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
-                    )
-                    inputs = {key: value.to(device) for key, value in inputs.items()}
-                    hook_state["mode"] = "self"
-                    hook_state["replace_vec"] = None
-                    handle_base = layer_modules[layer].register_forward_hook(hook)
-                    with torch.inference_mode():
-                        outputs = model(**inputs)
-                    handle_base.remove()
-                    baseline_logits = outputs.logits[0, -1]
-
-                    hook_state["mode"] = "replace"
-                    hook_state["replace_vec"] = replace_vec
-                    handle = layer_modules[layer].register_forward_hook(hook)
-                    with torch.inference_mode():
-                        outputs_patched = model(**inputs)
-                    handle.remove()
-
-                    patched_logits = outputs_patched.logits[0, -1]
-                    trial_metrics = compute_trial_metrics(
-                        baseline_logits,
-                        patched_logits,
-                        target_id,
-                        compute_prob_scores=bool(args.compute_prob_scores),
-                    )
-                    if args.compute_prob_scores:
-                        metric_lists["p_base"].append(trial_metrics["p_base"])
-                        metric_lists["p_patch"].append(trial_metrics["p_patch"])
-                        metric_lists["delta_p"].append(trial_metrics["delta_p"])
-                        if abs(trial_metrics["delta_p"]) > 1e-12:
-                            nonzero = True
-                    metric_lists["logit_base"].append(trial_metrics["logit_base"])
-                    metric_lists["logit_patch"].append(trial_metrics["logit_patch"])
-                    metric_lists["delta_logit"].append(trial_metrics["delta_logit"])
-                    metric_lists["logprob_base"].append(trial_metrics["logprob_base"])
-                    metric_lists["logprob_patch"].append(trial_metrics["logprob_patch"])
-                    metric_lists["delta_logprob"].append(trial_metrics["delta_logprob"])
-
-                    trial_row = {
-                        "q_id": q_id,
-                        "trial_idx": trial["trial_idx"],
-                        "layer": layer,
-                        "head": head,
-                        "target_id": target_id,
-                        "target_token": tokenizer.convert_ids_to_tokens(target_id),
-                        "seed_global": args.seed,
-                        "shuffle_labels": bool(args.shuffle_labels),
-                        "shuffle_derangement": False,
-                        "n_icl_examples": args.n_icl_examples,
-                        "demo_perm": trial.get("demo_perm"),
-                        "demo_fixed_points": trial.get("demo_fixed_points"),
-                        "demo_outputs_before": trial.get("demo_outputs_before"),
-                        "demo_outputs_after": trial.get("demo_outputs_after"),
-                        "p_base": trial_metrics["p_base"],
-                        "p_patch": trial_metrics["p_patch"],
-                        "delta_p": trial_metrics["delta_p"],
-                        "p_base_target": trial_metrics["p_base"],
-                        "p_patch_target": trial_metrics["p_patch"],
-                        "delta_p_target": trial_metrics["delta_p"],
-                        "logit_base": trial_metrics["logit_base"],
-                        "logit_patch": trial_metrics["logit_patch"],
-                        "delta_logit": trial_metrics["delta_logit"],
-                        "logprob_base": trial_metrics["logprob_base"],
-                        "logprob_patch": trial_metrics["logprob_patch"],
-                        "delta_logprob": trial_metrics["delta_logprob"],
-                        "prompt_tail_repr": repr(prefix_str[-30:]),
-                        "prompt_ends_with_space": prefix_str.endswith(" "),
-                        "slot_idx": slot_q,
-                        "seq_token_idx": seq_token_idx,
-                    }
-                    trial_metrics_file.write(
-                        json.dumps(trial_row, ensure_ascii=True, default=_json_safe) + "\n"
-                    )
-
-                mean_act_norm = mean_acts[layer, head, slot_q].norm().item()
-                mean_delta_p = mean(metric_lists["delta_p"])
-                std_delta_p = std(metric_lists["delta_p"])
-                mean_abs_delta_p = mean_abs(metric_lists["delta_p"])
-                mean_p_base = mean(metric_lists["p_base"])
-                std_p_base = std(metric_lists["p_base"])
-                mean_p_patch = mean(metric_lists["p_patch"])
-                std_p_patch = std(metric_lists["p_patch"])
-                mean_delta_logit = mean(metric_lists["delta_logit"])
-                std_delta_logit = std(metric_lists["delta_logit"])
-                mean_abs_delta_logit = mean_abs(metric_lists["delta_logit"])
-                mean_logit_base = mean(metric_lists["logit_base"])
-                mean_logit_patch = mean(metric_lists["logit_patch"])
-                mean_delta_logprob = mean(metric_lists["delta_logprob"])
-                std_delta_logprob = std(metric_lists["delta_logprob"])
-                mean_abs_delta_logprob = mean_abs(metric_lists["delta_logprob"])
-                mean_logprob_base = mean(metric_lists["logprob_base"])
-                mean_logprob_patch = mean(metric_lists["logprob_patch"])
-
-                cie_row = {
-                    "q_id": q_id,
-                    "layer": layer,
-                    "head": head,
-                    "n_trials": len(q_trials),
-                    "mean_delta_p": mean_delta_p,
-                    "std_delta_p": std_delta_p,
-                    "mean_abs_delta_p": mean_abs_delta_p,
-                    "mean_p_base": mean_p_base,
-                    "std_p_base": std_p_base,
-                    "mean_p_patch": mean_p_patch,
-                    "std_p_patch": std_p_patch,
-                    "mean_p_base_target": mean_p_base,
-                    "mean_p_patch_target": mean_p_patch,
-                    "mean_delta_p_target": mean_delta_p,
-                    "mean_delta_logit": mean_delta_logit,
-                    "std_delta_logit": std_delta_logit,
-                    "mean_abs_delta_logit": mean_abs_delta_logit,
-                    "mean_logit_base": mean_logit_base,
-                    "mean_logit_patch": mean_logit_patch,
-                    "mean_delta_logprob": mean_delta_logprob,
-                    "std_delta_logprob": std_delta_logprob,
-                    "mean_abs_delta_logprob": mean_abs_delta_logprob,
-                    "mean_logprob_base": mean_logprob_base,
-                    "mean_logprob_patch": mean_logprob_patch,
-                    "any_nonzero": nonzero,
-                    "mean_act_norm": mean_act_norm,
-                    "clean_mean_norm": mean_act_norm,
-                }
-                cie_rows.append(cie_row)
-
-                key = (layer, head)
+            for cie_row in q_rows:
+                key = (int(cie_row["layer"]), int(cie_row["head"]))
                 for k, v in cie_row.items():
                     if k in ("q_id", "layer", "head", "n_trials"):
                         continue
@@ -2191,14 +2966,14 @@ def main() -> int:
                     aie_accumulator[key][k] += float(v)
                 aie_counts[key] = aie_counts.get(key, 0) + 1
 
-                if pbar is not None:
-                    pbar.update(1)
-
-            if pbar is not None:
-                pbar.close()
-
         trial_metrics_file.close()
-        log(f"saved trial metrics: {trial_metrics_path}")
+        _materialize_final_outputs(
+            artifacts_dir=artifacts_dir,
+            score_rows=cie_rows,
+            dump_final_path=args.dump_trial_metrics_jsonl,
+            save_trials_enabled=bool(args.save_trials),
+        )
+        log(f"saved trial metrics: {os.path.join(artifacts_dir, 'trial_metrics.jsonl')}")
 
         cie_path = os.path.join(artifacts_dir, "cie_scores.csv")
         save_csv(cie_path, cie_rows)
@@ -2259,6 +3034,19 @@ def main() -> int:
             # Backward compatibility for StepE legacy path probes.
             torch.save(global_clean_mean, os.path.join(artifacts_dir, "mean_activations.pt"))
             log(f"saved global mean acts: {global_path}")
+        if args.perf_log:
+            perf_path = os.path.join(artifacts_dir, "perf_stats.json")
+            save_json(
+                perf_path,
+                {
+                    "mode": "relation_qid",
+                    "baseline_cache_scope": args.baseline_cache_scope,
+                    "cache_tokenized_inputs": bool(args.cache_tokenized_inputs),
+                    "persistent_layer_hook": bool(args.persistent_layer_hook),
+                    "groups": perf_groups,
+                },
+            )
+            log(f"saved perf stats: {perf_path}")
         log_file.close()
         return 0
 
@@ -2344,6 +3132,7 @@ def main() -> int:
             "dummy_labels": dummy_labels,
             "slot_index_map": slot_index_map,
             "slot_query_pred": slot_q,
+            **storage_metadata(canonical_root=artifacts_dir),
         },
     )
     log(f"saved mean_activations meta: {mean_meta_path}")
@@ -2376,14 +3165,17 @@ def main() -> int:
             "shuffle_derangement": False,
             "successful_icl_only_effective": args.successful_icl_only,
             "seed_global": args.seed,
+            "compute_prob_scores": bool(args.compute_prob_scores),
+            "stepd_fingerprint": args._resume_fingerprint,
+            **storage_metadata(canonical_root=artifacts_dir),
         },
     )
     log(f"saved run meta: {run_meta_path}")
 
     scores = []
     trials_rows = []
-    trial_metrics_path = os.path.join(artifacts_dir, "trial_metrics.jsonl")
-    trial_metrics_file = open(trial_metrics_path, "w", encoding="utf-8")
+    trial_metrics_path = resume_paths["trial_metrics"]
+    trial_metrics_file = open(trial_metrics_path, "a", encoding="utf-8")
     dump_handle = None
     dump_expected_keys = [
         "trial_idx",
@@ -2413,302 +3205,56 @@ def main() -> int:
         "slot_idx",
     ]
     if args.dump_trial_metrics_jsonl:
-        dump_dir = os.path.dirname(args.dump_trial_metrics_jsonl)
-        if dump_dir:
-            os.makedirs(dump_dir, exist_ok=True)
-        dump_handle = open(args.dump_trial_metrics_jsonl, "w", encoding="utf-8")
+        dump_handle = open(resume_paths["dump"], "a", encoding="utf-8")
 
     log("starting AIE sweep")
     try:
-        from tqdm import tqdm
-    except ImportError:
-        tqdm = None
-
-    pairs = [(layer, head) for layer in layers for head in heads]
-    total = len(pairs)
-    log_every = max(1, total // 100)
-    start_time = time.time()
-    patch_token_logged = False
-    pbar = (
-        tqdm(pairs, total=total, desc="StepD layer×head", unit="head")
-        if tqdm is not None
-        else None
-    )
-
-    for idx_pair, (layer, head) in enumerate(pairs, start=1):
-        if pbar is not None:
-            pbar.set_postfix({"layer": layer, "head": head, "trials": args.n_trials})
-        if idx_pair == 1 or idx_pair % log_every == 0 or idx_pair == total:
-            elapsed = time.time() - start_time
-            rate = idx_pair / elapsed if elapsed > 0 else 0.0
-            remaining = total - idx_pair
-            eta = remaining / rate if rate > 0 else 0.0
-            percent = (idx_pair / total) * 100 if total else 100.0
-            log(
-                "[StepD] "
-                f"{percent:.1f}% ({idx_pair}/{total}) "
-                f"layer={layer} head={head} "
-                f"elapsed={format_duration(elapsed)} "
-                f"ETA={format_duration(eta)}"
-            )
-
-        metric_lists = {
-            "p_base": [],
-            "p_patch": [],
-            "delta_p": [],
-            "logit_base": [],
-            "logit_patch": [],
-            "delta_logit": [],
-            "logprob_base": [],
-            "logprob_patch": [],
-            "delta_logprob": [],
-        }
-        nonzero = False
-        replace_vec = mean_acts[layer, head, slot_q]
-        hook_state = {"mode": "self", "replace_vec": None, "seq_token_idx": None}
-        hook = make_out_proj_head_output_overrider(
-            layer_idx=layer,
-            head_idx=head,
-            seq_token_idx=0,
-            mode="self",
-            replace_vec=None,
-            model_config=model_cfg,
+        scores, perf_stats = _run_aie_sweep_for_trials(
+            args=args,
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            tok_add_special=tok_add_special,
+            layer_modules=layer_modules,
+            layers=layers,
+            heads=heads,
+            trials=trials,
+            mean_acts=mean_acts,
+            slot_q=int(slot_q),
+            model_cfg=model_cfg,
             resolved_quant=resolved_quant,
-            force_recompute_outproj=baseline_recompute_outproj,
-            state=hook_state,
-            logger=log,
+            baseline_recompute_outproj=baseline_recompute_outproj,
+            log=log,
+            artifacts_dir=artifacts_dir,
+            trial_metrics_file=trial_metrics_file,
+            progress_desc="StepD layer×head",
+            n_trials_for_row=args.n_trials,
+            q_id=None,
+            save_trials_rows=None,
+            dump_handle=dump_handle,
+            dump_expected_keys=dump_expected_keys,
+            log_patch_debug=True,
         )
-        for trial in trials:
-            prefix_str = trial["corrupted_prefix_str"]
-            target_id = trial["target_id"]
-            seq_token_idx = trial["seq_token_idx"]
-            hook_state["seq_token_idx"] = seq_token_idx
-
-            inputs = tokenizer(
-                prefix_str, return_tensors="pt", add_special_tokens=tok_add_special
-            )
-            inputs = {key: value.to(device) for key, value in inputs.items()}
-            hook_state["mode"] = "self"
-            hook_state["replace_vec"] = None
-            handle_base = layer_modules[layer].register_forward_hook(hook)
-            with torch.inference_mode():
-                outputs = model(**inputs)
-            handle_base.remove()
-            baseline_logits = outputs.logits[0, -1]
-            if idx_pair == 1 and trial["trial_idx"] == 0:
-                target_token = tokenizer.convert_ids_to_tokens(target_id)
-                prompt_tail = repr(prefix_str[-20:])
-                log(
-                    "target_debug: "
-                    f"prompt_tail={prompt_tail} "
-                    f"target_token={target_token} target_id={target_id}"
-                )
-            if not patch_token_logged:
-                prefix_ids = inputs["input_ids"][0].tolist()
-                full_ids = trial.get("full_input_ids", [])
-                decoded_full = (
-                    tokenizer.decode([full_ids[seq_token_idx]])
-                    if full_ids
-                    else None
-                )
-                decoded_prefix = tokenizer.decode([prefix_ids[seq_token_idx]])
-                log(
-                    "PATCH slot/seq idx decoded: "
-                    f"slot_idx={slot_q} seq_token_idx={seq_token_idx} "
-                    f"full_token={repr(decoded_full)} "
-                    f"prefix_token={repr(decoded_prefix)}"
-                )
-                patch_token_logged = True
-
-            hook_state["mode"] = "replace"
-            hook_state["replace_vec"] = replace_vec
-            handle = layer_modules[layer].register_forward_hook(hook)
-            with torch.inference_mode():
-                outputs_patched = model(**inputs)
-            handle.remove()
-
-            patched_logits = outputs_patched.logits[0, -1]
-            trial_metrics = compute_trial_metrics(
-                baseline_logits,
-                patched_logits,
-                target_id,
-                compute_prob_scores=bool(args.compute_prob_scores),
-            )
-            if args.compute_prob_scores:
-                metric_lists["p_base"].append(trial_metrics["p_base"])
-                metric_lists["p_patch"].append(trial_metrics["p_patch"])
-                metric_lists["delta_p"].append(trial_metrics["delta_p"])
-                if abs(trial_metrics["delta_p"]) > 1e-12:
-                    nonzero = True
-            metric_lists["logit_base"].append(trial_metrics["logit_base"])
-            metric_lists["logit_patch"].append(trial_metrics["logit_patch"])
-            metric_lists["delta_logit"].append(trial_metrics["delta_logit"])
-            metric_lists["logprob_base"].append(trial_metrics["logprob_base"])
-            metric_lists["logprob_patch"].append(trial_metrics["logprob_patch"])
-            metric_lists["delta_logprob"].append(trial_metrics["delta_logprob"])
-
-            trial_row = {
-                "trial_idx": trial["trial_idx"],
-                "layer": layer,
-                "head": head,
-                "target_id": target_id,
-                "target_token": tokenizer.convert_ids_to_tokens(target_id),
-                "seed_global": args.seed,
-                "shuffle_labels": bool(args.shuffle_labels),
-                "shuffle_derangement": False,
-                "n_icl_examples": args.n_icl_examples,
-                "demo_perm": trial.get("demo_perm"),
-                "demo_fixed_points": trial.get("demo_fixed_points"),
-                "demo_outputs_before": trial.get("demo_outputs_before"),
-                "demo_outputs_after": trial.get("demo_outputs_after"),
-                "p_base": trial_metrics["p_base"],
-                "p_patch": trial_metrics["p_patch"],
-                "delta_p": trial_metrics["delta_p"],
-                "p_base_target": trial_metrics["p_base"],
-                "p_patch_target": trial_metrics["p_patch"],
-                "delta_p_target": trial_metrics["delta_p"],
-                "logit_base": trial_metrics["logit_base"],
-                "logit_patch": trial_metrics["logit_patch"],
-                "delta_logit": trial_metrics["delta_logit"],
-                "logprob_base": trial_metrics["logprob_base"],
-                "logprob_patch": trial_metrics["logprob_patch"],
-                "delta_logprob": trial_metrics["delta_logprob"],
-                "prompt_tail_repr": repr(prefix_str[-30:]),
-                "prompt_ends_with_space": prefix_str.endswith(" "),
-                "slot_idx": slot_q,
-                "seq_token_idx": seq_token_idx,
-            }
-            trial_metrics_file.write(
-                json.dumps(trial_row, ensure_ascii=True, default=_json_safe) + "\n"
-            )
-
-            if dump_handle is not None:
-                if (args.dump_layer is None or args.dump_layer == layer) and (
-                    args.dump_head is None or args.dump_head == head
-                ):
-                    if args.dump_max_trials < 0 or trial["trial_idx"] < args.dump_max_trials:
-                        ids_list = inputs["input_ids"][0].tolist()
-                        dump_row = {
-                            "trial_idx": trial["trial_idx"],
-                            "layer": layer,
-                            "head": head,
-                            "target_id": target_id,
-                            "target_token": tokenizer.convert_ids_to_tokens(target_id),
-                            "seed_global": args.seed,
-                            "n_icl_examples": args.n_icl_examples,
-                            "p_base": trial_metrics["p_base"],
-                            "p_patch": trial_metrics["p_patch"],
-                            "delta_p": trial_metrics["delta_p"],
-                            "p_base_target": trial_metrics["p_base"],
-                            "p_patch_target": trial_metrics["p_patch"],
-                            "delta_p_target": trial_metrics["delta_p"],
-                            "logit_base": trial_metrics["logit_base"],
-                            "logit_patch": trial_metrics["logit_patch"],
-                            "delta_logit": trial_metrics["delta_logit"],
-                            "logprob_base": trial_metrics["logprob_base"],
-                            "logprob_patch": trial_metrics["logprob_patch"],
-                            "delta_logprob": trial_metrics["delta_logprob"],
-                            "prompt_tail_repr": (
-                                repr(prefix_str[-60:]) if args.dump_include_prompt else ""
-                            ),
-                            "prompt_ends_with_space": prefix_str.endswith(" "),
-                            "seq_token_idx": seq_token_idx,
-                            "ids_len": len(ids_list),
-                            "ids_last10": ids_list[-10:],
-                            "slot_idx": slot_q,
-                        }
-                        if set(dump_row.keys()) != set(dump_expected_keys):
-                            missing = set(dump_expected_keys) - set(dump_row.keys())
-                            extra = set(dump_row.keys()) - set(dump_expected_keys)
-                            raise ValueError(
-                                f"dump keys mismatch missing={sorted(missing)} extra={sorted(extra)}"
-                            )
-                        dump_handle.write(
-                            json.dumps(dump_row, ensure_ascii=True, default=_json_safe) + "\n"
-                        )
-
-            if args.save_trials:
-                trials_rows.append(
-                    {
-                        "trial_idx": trial["trial_idx"],
-                        "layer": layer,
-                        "head": head,
-                        "target_id": target_id,
-                        "p_base": trial_metrics["p_base"],
-                        "p_patch": trial_metrics["p_patch"],
-                        "delta_p": trial_metrics["delta_p"],
-                        "p_base_target": trial_metrics["p_base"],
-                        "p_patch_target": trial_metrics["p_patch"],
-                        "delta_p_target": trial_metrics["delta_p"],
-                        "logit_base": trial_metrics["logit_base"],
-                        "logit_patch": trial_metrics["logit_patch"],
-                        "delta_logit": trial_metrics["delta_logit"],
-                        "logprob_base": trial_metrics["logprob_base"],
-                        "logprob_patch": trial_metrics["logprob_patch"],
-                        "delta_logprob": trial_metrics["delta_logprob"],
-                    }
-                )
-
-        mean_act_norm = mean_acts[layer, head, slot_q].norm().item()
-        mean_delta_p = mean(metric_lists["delta_p"])
-        std_delta_p = std(metric_lists["delta_p"])
-        mean_abs_delta_p = mean_abs(metric_lists["delta_p"])
-        mean_p_base = mean(metric_lists["p_base"])
-        std_p_base = std(metric_lists["p_base"])
-        mean_p_patch = mean(metric_lists["p_patch"])
-        std_p_patch = std(metric_lists["p_patch"])
-        if args.compute_prob_scores and not (-1.000001 <= mean_delta_p <= 1.000001):
-            log(
-                f"[WARN] mean_delta_p out of range: {mean_delta_p:.6f} "
-                f"(layer={layer} head={head})"
-            )
-            assert -1.000001 <= mean_delta_p <= 1.000001
-
-        mean_delta_logit = mean(metric_lists["delta_logit"])
-        std_delta_logit = std(metric_lists["delta_logit"])
-        mean_abs_delta_logit = mean_abs(metric_lists["delta_logit"])
-        mean_logit_base = mean(metric_lists["logit_base"])
-        mean_logit_patch = mean(metric_lists["logit_patch"])
-
-        mean_delta_logprob = mean(metric_lists["delta_logprob"])
-        std_delta_logprob = std(metric_lists["delta_logprob"])
-        mean_abs_delta_logprob = mean_abs(metric_lists["delta_logprob"])
-        mean_logprob_base = mean(metric_lists["logprob_base"])
-        mean_logprob_patch = mean(metric_lists["logprob_patch"])
-        scores.append(
+    except ValueError as exc:
+        log(str(exc))
+        trial_metrics_file.close()
+        if dump_handle is not None:
+            dump_handle.close()
+        log_file.close()
+        return 1
+    if args.perf_log:
+        perf_path = os.path.join(artifacts_dir, "perf_stats.json")
+        save_json(
+            perf_path,
             {
-                "layer": layer,
-                "head": head,
-                "n_trials": args.n_trials,
-                "mean_delta_p": mean_delta_p,
-                "std_delta_p": std_delta_p,
-                "mean_abs_delta_p": mean_abs_delta_p,
-                "mean_p_base": mean_p_base,
-                "std_p_base": std_p_base,
-                "mean_p_patch": mean_p_patch,
-                "std_p_patch": std_p_patch,
-                "mean_p_base_target": mean_p_base,
-                "mean_p_patch_target": mean_p_patch,
-                "mean_delta_p_target": mean_delta_p,
-                "mean_delta_logit": mean_delta_logit,
-                "std_delta_logit": std_delta_logit,
-                "mean_abs_delta_logit": mean_abs_delta_logit,
-                "mean_logit_base": mean_logit_base,
-                "mean_logit_patch": mean_logit_patch,
-                "mean_delta_logprob": mean_delta_logprob,
-                "std_delta_logprob": std_delta_logprob,
-                "mean_abs_delta_logprob": mean_abs_delta_logprob,
-                "mean_logprob_base": mean_logprob_base,
-                "mean_logprob_patch": mean_logprob_patch,
-                "any_nonzero": nonzero,
-                "mean_act_norm": mean_act_norm,
-                "clean_mean_norm": mean_act_norm,
-            }
+                "mode": "single",
+                "baseline_cache_scope": args.baseline_cache_scope,
+                "cache_tokenized_inputs": bool(args.cache_tokenized_inputs),
+                "persistent_layer_hook": bool(args.persistent_layer_hook),
+                "stats": perf_stats,
+            },
         )
-        if pbar is not None:
-            pbar.update(1)
-    if pbar is not None:
-        pbar.close()
+        log(f"saved perf stats: {perf_path}")
 
     if scores and args.score_key not in scores[0]:
         log(f"score_key not found: {args.score_key}")
@@ -2749,6 +3295,7 @@ def main() -> int:
                 "slot_query_pred": slot_q,
                 "slot_label": dummy_labels[slot_q],
                 "score_key": args.score_key,
+                **storage_metadata(canonical_root=artifacts_dir),
             },
             "scores": scores_sorted,
         },
@@ -2757,13 +3304,16 @@ def main() -> int:
     log(f"saved scores: {scores_path}")
     log(f"saved scores json: {scores_json_path}")
 
-    if args.save_trials:
-        trials_path = os.path.join(artifacts_dir, "aie_trials.csv")
-        save_csv(trials_path, trials_rows)
-        log(f"saved trials: {trials_path}")
-
     trial_metrics_file.close()
-    log(f"saved trial metrics: {trial_metrics_path}")
+    _materialize_final_outputs(
+        artifacts_dir=artifacts_dir,
+        score_rows=scores,
+        dump_final_path=args.dump_trial_metrics_jsonl,
+        save_trials_enabled=bool(args.save_trials),
+    )
+    if args.save_trials:
+        log(f"saved trials: {os.path.join(artifacts_dir, 'aie_trials.csv')}")
+    log(f"saved trial metrics: {os.path.join(artifacts_dir, 'trial_metrics.jsonl')}")
     if dump_handle is not None:
         dump_handle.close()
 

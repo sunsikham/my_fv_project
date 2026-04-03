@@ -77,6 +77,21 @@ def to_float_or_none(value: object) -> Optional[float]:
         return None
 
 
+def storage_metadata(
+    *,
+    canonical_root: Path,
+    sync_root: Optional[Path],
+    sync_mode: str,
+    artifact_profile: str,
+) -> Dict[str, object]:
+    return {
+        "canonical_root": str(canonical_root),
+        "sync_root": (str(sync_root) if sync_root is not None else None),
+        "sync_mode": str(sync_mode),
+        "artifact_profile": str(artifact_profile),
+    }
+
+
 def aggregate_aie_scores(
     relation_root: Path,
     fv_qids: Sequence[str],
@@ -445,6 +460,12 @@ def main() -> int:
             "super_fv_artifacts_dir": str(super_fv_artifacts_dir),
             "eval_root": str(eval_root),
         },
+        **storage_metadata(
+            canonical_root=out_root,
+            sync_root=None,
+            sync_mode="none",
+            artifact_profile="full",
+        ),
     }
     with (out_root / "run_meta.json").open("w", encoding="utf-8") as handle:
         json.dump(run_meta, handle, ensure_ascii=True, indent=2)
@@ -634,6 +655,12 @@ def main() -> int:
         "num_rows_comparison": len(compare_rows),
         "num_failures": len(failures),
         "failures": failures,
+        **storage_metadata(
+            canonical_root=out_root,
+            sync_root=None,
+            sync_mode="none",
+            artifact_profile="full",
+        ),
     }
     with (out_root / "run_status.json").open("w", encoding="utf-8") as handle:
         json.dump(status, handle, ensure_ascii=True, indent=2)
