@@ -1,0 +1,7 @@
+interface:
+  display_name: "High-Trust Research"
+  short_description: "Evidence-first repo and paper research with explicit source grounding."
+  default_prompt: "Use this skill to investigate the repository and verify any external claims with primary sources when possible."
+
+policy:
+  allow_implicit_invocation: true

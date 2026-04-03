@@ -1,0 +1,7 @@
+interface:
+  display_name: "CCN Extended Abstract Review"
+  short_description: "Review a full CCN draft for logic, clarity, and format safety."
+  default_prompt: "Use $ccn-extended-abstract-review to review my full CCN extended abstract for logical flow, section quality, and CCN template compliance."
+
+policy:
+  allow_implicit_invocation: true

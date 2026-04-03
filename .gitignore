@@ -30,8 +30,16 @@ _hf_cache/
 *.safetensors
 
 # Local agent/tool state
-.agents/
-.codex/
+.agents/*
+!.agents/skills/
+!.agents/skills/**/
+!.agents/skills/**/SKILL.md
+!.agents/skills/**/agents/
+!.agents/skills/**/agents/openai.yaml
+
+.codex/*
+!.codex/agents/
+!.codex/agents/*.toml
 
 # Large experiment outputs stay scratch/rsync-managed
 results_fv/relation_condition_qwise/
